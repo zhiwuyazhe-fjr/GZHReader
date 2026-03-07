@@ -1,0 +1,33 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - mysql_data:/var/lib/mysql
+  app:
+    image: ${WEWE_RSS_IMAGE:-cooderl/wewe-rss:latest}
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "${WEWE_RSS_PORT:-4000}:4000"
+    environment:
+      DATABASE_TYPE: mysql
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      AUTH_CODE: ${WEWE_RSS_AUTH_CODE}
+      SERVER_ORIGIN_URL: ${WEWE_RSS_SERVER_ORIGIN_URL}
+
+volumes:
+  mysql_data:

@@ -1,0 +1,35 @@
+db_path: ./data/gzhreader.db
+feeds:
+  - name: 新智元
+    url: http://localhost:4000/feeds/replace-me.atom
+    active: true
+    order: 1
+schedule:
+  daily_time: '21:30'
+  timezone: Asia/Shanghai
+rss:
+  timezone: Asia/Shanghai
+  day_start: '00:00'
+  request_timeout_seconds: 20
+  user_agent: GZHReader/0.2
+  max_articles_per_feed: 20
+wewe_rss:
+  enabled: true
+  base_url: http://localhost:4000
+  auth_code: '123567'
+  service_dir: ./infra/wewe-rss
+  compose_variant: mysql
+  port: 4000
+  server_origin_url: http://localhost:4000
+  image: cooderl/wewe-rss:latest
+llm:
+  base_url: https://api.openai.com/v1
+  api_key: ''
+  model: gpt-4o-mini
+  timeout_seconds: 45
+  retries: 2
+  temperature: 0.2
+output:
+  briefing_dir: ./output/briefings
+  raw_archive_dir: ./output/raw
+  log_level: INFO

@@ -1,0 +1,13 @@
+services:
+  app:
+    image: ${WEWE_RSS_IMAGE:-cooderl/wewe-rss:latest}
+    restart: unless-stopped
+    ports:
+      - "${WEWE_RSS_PORT:-4000}:4000"
+    environment:
+      DATABASE_TYPE: sqlite
+      DATABASE_URL: file:/app/data/wewe-rss.db?connection_limit=1
+      AUTH_CODE: ${WEWE_RSS_AUTH_CODE}
+      SERVER_ORIGIN_URL: ${WEWE_RSS_SERVER_ORIGIN_URL}
+    volumes:
+      - ./data:/app/data

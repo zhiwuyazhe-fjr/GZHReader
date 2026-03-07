@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gzhreader"
+version = "0.2.0"
+description = "RSS-based WeChat official account daily briefing generator"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "beautifulsoup4>=4.12.3",
+  "feedparser>=6.0.11",
+  "httpx>=0.28.1",
+  "pydantic>=2.10.6",
+  "pyyaml>=6.0.2",
+  "typer>=0.15.1",
+  "tzdata>=2025.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.4",
+]
+
+[project.scripts]
+gzhreader = "gzhreader.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q --basetemp=.pytest_tmp"
+testpaths = ["tests"]

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtualenv
+.venv/
+
+# Build metadata
+src/*.egg-info/
+*.egg-info/
+
+# Test/runtime caches
+.pytest_cache/
+.pytest_tmp/
+.playwright-cli/
+
+# Local secrets/config
+config.yaml
+infra/wewe-rss/.env
+
+# Runtime data
+data/
+output/
+infra/wewe-rss/data/
+infra/wewe-rss/mysql/
+
+# OS/editor
+.DS_Store
+Thumbs.db
