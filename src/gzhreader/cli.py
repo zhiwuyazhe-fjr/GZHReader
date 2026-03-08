@@ -47,7 +47,8 @@ def init(
 
     Path(cfg.db_path).parent.mkdir(parents=True, exist_ok=True)
     Path(cfg.output.briefing_dir).mkdir(parents=True, exist_ok=True)
-    Path(cfg.output.raw_archive_dir).mkdir(parents=True, exist_ok=True)
+    if cfg.output.save_raw_html:
+        Path(cfg.output.raw_archive_dir).mkdir(parents=True, exist_ok=True)
     manager = WeWeRSSManager(cfg.wewe_rss)
     generated = manager.ensure_scaffold(force=False)
     typer.echo(f"??????: {config}")

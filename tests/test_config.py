@@ -21,6 +21,7 @@ output:
     assert len(cfg.feeds) == 1
     assert cfg.feeds[0].name == "新智元"
     assert cfg.output.raw_archive_dir == "./output/html"
+    assert cfg.output.save_raw_html is False
     assert cfg.article_fetch.enabled is True
     assert cfg.article_fetch.browser_channel_order == ["msedge", "chrome"]
 
@@ -31,3 +32,5 @@ def test_save_and_reload_roundtrip(tmp_path) -> None:
     save_config(cfg, path)
     loaded = load_config(path)
     assert loaded.model_dump() == cfg.model_dump()
+    assert loaded.wewe_rss.compose_variant == "mysql"
+    assert loaded.output.save_raw_html is False

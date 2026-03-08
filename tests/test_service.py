@@ -48,7 +48,11 @@ def make_config(tmp_path):
         feeds=[FeedConfig(name="新智元", url="http://localhost/feed.atom", active=True, order=1)],
         rss=RSSConfig(),
         llm=LLMConfig(api_key=""),
-        output=OutputConfig(briefing_dir=str(tmp_path / "briefings"), raw_archive_dir=str(tmp_path / "raw")),
+        output=OutputConfig(
+            briefing_dir=str(tmp_path / "briefings"),
+            raw_archive_dir=str(tmp_path / "raw"),
+            save_raw_html=False,
+        ),
     )
 
 
@@ -95,6 +99,8 @@ def test_service_fetches_fulltext_for_summary_only_rss(tmp_path) -> None:
     assert result.summarized == 1
     assert views[0].content_source == "http_fulltext"
     assert "增强正文" in views[0].full_content
+    assert (tmp_path / "briefings" / "2026-03-07.md").exists()
+    assert not (tmp_path / "raw").exists()
 
 
 def test_service_enhances_existing_weak_article_without_duplicate(tmp_path) -> None:
@@ -159,6 +165,7 @@ def test_service_enhances_existing_weak_article_without_duplicate(tmp_path) -> N
     assert views[0].content_source == "browser_dom"
     assert "浏览器增强正文" in views[0].full_content
 
+
 def test_service_enhances_already_summarized_weak_article(tmp_path) -> None:
     config = make_config(tmp_path)
     storage = Storage(config.db_path)
@@ -167,34 +174,34 @@ def test_service_enhances_already_summarized_weak_article(tmp_path) -> None:
 
     storage.insert_article_if_new(
         ArticleDraft(
-            feed_name="???",
+            feed_name="新智元",
             feed_url="http://localhost/feed.atom",
-            title="??1",
-            author="???",
+            title="文章1",
+            author="新智元",
             publish_time=datetime(2026, 3, 7, 8, 0),
             url="https://example.com/a1",
-            full_content="???",
-            raw_html="<p>???</p>",
+            full_content="旧标题摘要",
+            raw_html="<p>旧标题摘要</p>",
             content_source="title_only",
             capture_status="rss_empty",
             fingerprint="seed-fingerprint",
-            summary="???",
+            summary="旧摘要",
             summary_status="done",
         ),
         run_key="seed",
     )
 
     weak_article = FeedArticle(
-        feed_name="???",
+        feed_name="新智元",
         feed_url="http://localhost/feed.atom",
-        title="??1",
+        title="文章1",
         url="https://example.com/a1",
-        author="???",
+        author="新智元",
         published_at=datetime(2026, 3, 7, 8, 0),
         content_html="",
         content_text="",
-        summary_html="<p>???</p>",
-        summary_text="???",
+        summary_html="<p>旧标题摘要</p>",
+        summary_text="旧标题摘要",
     )
     service = ReaderService(
         config,
@@ -204,11 +211,11 @@ def test_service_enhances_already_summarized_weak_article(tmp_path) -> None:
         BriefingBuilder(),
         article_fetcher=FakeFetcher(
             FetchedArticleContent(
-                title="??1",
-                author="???",
+                title="文章1",
+                author="新智元",
                 publish_time=datetime(2026, 3, 7, 8, 0),
-                content_text="??????" * 100,
-                raw_html="<article>??????</article>",
+                content_text="新的原文正文" * 100,
+                raw_html="<article>新的原文正文</article>",
                 content_source="browser_dom",
                 capture_status="browser_dom",
             )
@@ -222,5 +229,4 @@ def test_service_enhances_already_summarized_weak_article(tmp_path) -> None:
     assert result.summarized == 1
     assert len(views) == 1
     assert views[0].content_source == "browser_dom"
-    assert "??????" in views[0].full_content
-
+    assert "新的原文正文" in views[0].full_content

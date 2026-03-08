@@ -1,6 +1,6 @@
-db_path: ./data/gzhreader.db
+﻿db_path: ./data/gzhreader.db
 feeds:
-  - name: ?????
+  - name: 示例公众号
     url: http://localhost:4000/feeds/replace-me.atom
     active: true
     order: 1
@@ -41,4 +41,5 @@ llm:
 output:
   briefing_dir: ./output/briefings
   raw_archive_dir: ./output/raw
+  save_raw_html: false
   log_level: INFO

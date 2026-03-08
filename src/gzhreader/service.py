@@ -205,6 +205,8 @@ class ReaderService:
         return len(draft.full_content.strip()) > len(existing.full_content.strip())
 
     def _archive_raw_html(self, target_date: date, draft: ArticleDraft) -> None:
+        if not self.config.output.save_raw_html:
+            return
         if not draft.raw_html:
             return
         archive_dir = Path(self.config.output.raw_archive_dir)

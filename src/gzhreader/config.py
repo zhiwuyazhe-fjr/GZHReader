@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -67,7 +67,7 @@ class WeWeRSSConfig(StrictBaseModel):
     base_url: str = "http://localhost:4000"
     auth_code: str = "123567"
     service_dir: str = "./infra/wewe-rss"
-    compose_variant: Literal["sqlite", "mysql"] = "sqlite"
+    compose_variant: Literal["sqlite", "mysql"] = "mysql"
     port: int = 4000
     server_origin_url: str = "http://localhost:4000"
     image: str = "cooderl/wewe-rss:latest"
@@ -120,6 +120,7 @@ class LLMConfig(StrictBaseModel):
 class OutputConfig(StrictBaseModel):
     briefing_dir: str = "./output/briefings"
     raw_archive_dir: str = "./output/raw"
+    save_raw_html: bool = False
     log_level: str = "INFO"
 
 
@@ -170,7 +171,7 @@ def default_config() -> AppConfig:
     return AppConfig(
         feeds=[
             FeedConfig(
-                name="?????",
+                name="示例公众号",
                 url="http://localhost:4000/feeds/replace-me.atom",
                 active=True,
                 order=1,
@@ -181,7 +182,7 @@ def default_config() -> AppConfig:
 
 def ensure_config(path: Path) -> AppConfig:
     if not path.exists():
-        raise FileNotFoundError(f"???????: {path}")
+        raise FileNotFoundError(f"配置文件不存在: {path}")
     return load_config(path)
 
 
