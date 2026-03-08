@@ -28,9 +28,13 @@ dependencies = [
 dev = [
   "pytest>=8.3.4",
 ]
+build = [
+  "pyinstaller>=6.12",
+]
 
 [project.scripts]
-gzhreader = "gzhreader.cli:app"
+gzhreader = "gzhreader.console_entry:main"
+gzhreader-gui = "gzhreader.gui_entry:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

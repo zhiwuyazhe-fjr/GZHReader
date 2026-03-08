@@ -8,6 +8,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .runtime_paths import get_runtime_paths, is_frozen_app
+
 
 def build_default_source_url(base_url: str) -> str:
     normalized = base_url.strip().rstrip("/") or "http://localhost:4000"
@@ -15,6 +17,10 @@ def build_default_source_url(base_url: str) -> str:
 
 
 DAILY_ARTICLE_LIMIT_PRESETS: tuple[Literal["all"] | int, ...] = ("all", 20, 30, 40, 50, 100)
+LEGACY_DB_PATHS = ("./data/gzhreader.db", "data/gzhreader.db")
+LEGACY_BRIEFING_DIRS = ("./output/briefings", "output/briefings")
+LEGACY_RAW_ARCHIVE_DIRS = ("./output/raw", "output/raw")
+LEGACY_WEWE_RSS_DIRS = ("./infra/wewe-rss", "infra/wewe-rss")
 
 
 def normalize_daily_article_limit(value: Any) -> Literal["all"] | int:
@@ -257,7 +263,16 @@ class AppConfig(StrictBaseModel):
 
 
 def default_config() -> AppConfig:
-    return AppConfig(source=SourceConfig(url=build_default_source_url("http://localhost:4000")))
+    runtime_paths = get_runtime_paths()
+    return AppConfig(
+        db_path=str(runtime_paths.db_path),
+        source=SourceConfig(url=build_default_source_url("http://localhost:4000")),
+        wewe_rss=WeWeRSSConfig(service_dir=str(runtime_paths.wewe_rss_dir)),
+        output=OutputConfig(
+            briefing_dir=str(runtime_paths.output_dir),
+            raw_archive_dir=str(runtime_paths.raw_archive_dir),
+        ),
+    )
 
 
 def ensure_config(path: Path) -> AppConfig:
@@ -275,8 +290,9 @@ def load_config(path: Path) -> AppConfig:
 def migrate_config_file(path: Path) -> tuple[AppConfig, bool, Path | None]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     config = AppConfig.model_validate(data)
+    runtime_changed = _apply_runtime_path_migration(config)
 
-    if not _needs_file_migration(data):
+    if not _needs_file_migration(data) and not runtime_changed:
         return config, False, None
 
     backup_path = Path(f"{path}.bak")
@@ -315,6 +331,37 @@ def _output_needs_migration(data: dict[str, Any]) -> bool:
 def _rss_needs_migration(data: dict[str, Any]) -> bool:
     rss = data.get("rss")
     return isinstance(rss, dict) and "max_articles_per_feed" in rss and "daily_article_limit" not in rss
+
+
+def _apply_runtime_path_migration(config: AppConfig) -> bool:
+    if not is_frozen_app():
+        return False
+
+    runtime_paths = get_runtime_paths()
+    changed = False
+
+    if _needs_runtime_path_update(config.db_path, LEGACY_DB_PATHS):
+        config.db_path = str(runtime_paths.db_path)
+        changed = True
+
+    if _needs_runtime_path_update(config.output.briefing_dir, LEGACY_BRIEFING_DIRS):
+        config.output.briefing_dir = str(runtime_paths.output_dir)
+        changed = True
+
+    if _needs_runtime_path_update(config.output.raw_archive_dir, LEGACY_RAW_ARCHIVE_DIRS):
+        config.output.raw_archive_dir = str(runtime_paths.raw_archive_dir)
+        changed = True
+
+    if _needs_runtime_path_update(config.wewe_rss.service_dir, LEGACY_WEWE_RSS_DIRS):
+        config.wewe_rss.service_dir = str(runtime_paths.wewe_rss_dir)
+        changed = True
+
+    return changed
+
+
+def _needs_runtime_path_update(value: str, legacy_values: tuple[str, ...]) -> bool:
+    normalized = value.replace('\\', '/').strip()
+    return normalized in legacy_values
 
 
 def _pick_first_active_feed_url(feeds: list[dict[str, Any]]) -> str:

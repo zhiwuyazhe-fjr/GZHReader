@@ -558,3 +558,34 @@ gzhreader app
 ```
 
 然后在本地控制台里完成剩下所有操作。
+
+---
+
+## 安装版打包与默认目录
+
+如果你要生成正式的 Windows 成品安装包，请使用：
+
+```powershell
+.\scripts\build_release.ps1
+```
+
+构建完成后：
+
+- 安装包输出到 `release/`
+- PyInstaller 产物输出到 `dist/GZHReader/`
+
+安装版默认会把运行时文件分开存放到用户目录：
+
+- 配置文件：`%APPDATA%\GZHReader\config.yaml`
+- SQLite 数据库：`%APPDATA%\GZHReader\data\gzhreader.db`
+- `wewe-rss` 编排目录：`%APPDATA%\GZHReader\infra\wewe-rss`
+- 日志目录：`%APPDATA%\GZHReader\logs`
+- 默认 Markdown 输出目录：`%USERPROFILE%\Documents\GZHReader`
+
+说明：
+
+- GitHub 仓库中保留 `tests/`，但安装包和发布产物不会包含测试文件
+- Docker Desktop 仍然是外部依赖，不会被打进安装包
+- 普通用户启动的是 `GZHReader.exe`
+- Windows 计划任务会调用内部的 `GZHReader Console.exe`
+

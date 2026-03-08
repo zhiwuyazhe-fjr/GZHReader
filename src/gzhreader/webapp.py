@@ -26,6 +26,7 @@ from .config import (
 from .embedded_assets import HTMX_MIN_JS
 from .logging_utils import configure_logging
 from .rss_client import RSSClient
+from .runtime_paths import resolve_config_path
 from .scheduler import get_schedule_status, install_schedule, remove_schedule
 from .service import ReaderService
 from .storage import Storage
@@ -383,7 +384,7 @@ class DashboardBackend:
 
 
 def create_app(*, config_path: Path | None = None, backend: DashboardBackend | None = None) -> FastAPI:
-    resolved_backend = backend or DashboardBackend(config_path or Path("config.yaml"))
+    resolved_backend = backend or DashboardBackend(resolve_config_path(config_path))
     web = FastAPI(title="GZHReader GUI")
     web.state.backend = resolved_backend
     static_dir = Path(__file__).with_name("static")

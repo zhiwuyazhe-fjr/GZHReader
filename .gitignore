@@ -29,3 +29,13 @@ infra/wewe-rss/mysql/
 # OS/editor
 .DS_Store
 Thumbs.db
+
+# Packaging/build outputs
+config.yaml.bak
+build/
+dist/
+release/
+installer/Output/
+logs/
+htmlcov/
+.coverage
