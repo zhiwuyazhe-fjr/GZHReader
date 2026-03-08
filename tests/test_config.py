@@ -1,6 +1,4 @@
-from pathlib import Path
-
-from gzhreader.config import AppConfig, load_config, save_config
+﻿from gzhreader.config import AppConfig, load_config, save_config
 
 
 def test_legacy_accounts_migrate_to_feeds(tmp_path) -> None:
@@ -23,6 +21,8 @@ output:
     assert len(cfg.feeds) == 1
     assert cfg.feeds[0].name == "新智元"
     assert cfg.output.raw_archive_dir == "./output/html"
+    assert cfg.article_fetch.enabled is True
+    assert cfg.article_fetch.browser_channel_order == ["msedge", "chrome"]
 
 
 def test_save_and_reload_roundtrip(tmp_path) -> None:

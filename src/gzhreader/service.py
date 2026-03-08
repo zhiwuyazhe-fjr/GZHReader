@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 from pathlib import Path
 
+from .article_fetcher import ArticleContentFetcher, FetchedArticleContent
 from .briefing import BriefingBuilder
 from .config import AppConfig
 from .rss_client import RSSClient
 from .storage import Storage, build_fingerprint
 from .summarizer import OpenAICompatibleSummarizer, SummarizeInput
-from .types import ArticleDraft, DailyRunResult, FeedArticle
+from .types import ArticleDraft, DailyRunResult, FeedArticle, StoredArticle
+
+logger = logging.getLogger(__name__)
+
+WEAK_CONTENT_SOURCES = {"rss_summary", "title_only"}
+WEAK_CAPTURE_STATUSES = {"rss_empty", "rss_summary_only", "fetch_failed"}
+STRONG_CONTENT_SOURCES = {"rss_content", "http_fulltext", "browser_dom"}
 
 
 class ReaderService:
@@ -19,12 +27,14 @@ class ReaderService:
         rss_client: RSSClient,
         summarizer: OpenAICompatibleSummarizer,
         briefing_builder: BriefingBuilder,
+        article_fetcher: ArticleContentFetcher | None = None,
     ) -> None:
         self.config = config
         self.storage = storage
         self.rss_client = rss_client
         self.summarizer = summarizer
         self.briefing_builder = briefing_builder
+        self.article_fetcher = article_fetcher or ArticleContentFetcher(config.article_fetch, config.rss)
 
     def run_for_date(self, target_date: date, feed_filter: str | None = None) -> DailyRunResult:
         import uuid
@@ -44,10 +54,19 @@ class ReaderService:
                     if not self.rss_client.in_window(item.published_at, target_date):
                         result.filtered_out += 1
                         continue
+
                     draft = self._build_draft(item)
-                    inserted = self.storage.insert_article_if_new(draft, run_key=run_key)
-                    if inserted:
-                        result.inserted += 1
+                    existing = self.storage.find_article(draft.url, draft.fingerprint)
+                    if existing is None:
+                        inserted = self.storage.insert_article_if_new(draft, run_key=run_key)
+                        if inserted:
+                            result.inserted += 1
+                            self._archive_raw_html(target_date, draft)
+                        continue
+
+                    if self._should_enhance(existing, draft, target_date):
+                        logger.info("Content fetch: enhancing article %s with %s", draft.title, draft.content_source)
+                        self.storage.enhance_article(existing.id, draft, run_key=run_key)
                         self._archive_raw_html(target_date, draft)
             except Exception as exc:
                 result.feed_errors[feed.name] = str(exc)
@@ -66,6 +85,7 @@ class ReaderService:
         views = self.storage.get_article_views_for_date(target_date)
         markdown = self.briefing_builder.build(target_date, views)
         self.storage.save_briefing(target_date, markdown)
+
         output_dir = Path(self.config.output.briefing_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         briefing_path = output_dir / f"{target_date.isoformat()}.md"
@@ -85,6 +105,32 @@ class ReaderService:
         return result
 
     def _build_draft(self, item: FeedArticle) -> ArticleDraft:
+        base_draft = self._build_draft_from_rss(item)
+        if not self.article_fetcher.should_fetch(item):
+            logger.info("Content fetch: RSS fulltext hit for %s", item.title)
+            return base_draft
+
+        logger.info("Content fetch: RSS content weak, fetching article %s", item.title)
+        fetched = self.article_fetcher.fetch(
+            item.url,
+            fallback_title=item.title,
+            fallback_author=item.author,
+            fallback_publish_time=item.published_at,
+        )
+        if fetched.success:
+            logger.info("Content fetch: final source %s for %s", fetched.content_source, item.title)
+            return self._build_draft_from_fetched(item, fetched)
+
+        logger.info(
+            "Content fetch: fallback to RSS source %s for %s (%s)",
+            base_draft.content_source,
+            item.title,
+            fetched.fetch_error,
+        )
+        base_draft.capture_status = "fetch_failed"
+        return base_draft
+
+    def _build_draft_from_rss(self, item: FeedArticle) -> ArticleDraft:
         if item.content_text:
             full_content = item.content_text
             raw_html = item.content_html
@@ -120,6 +166,43 @@ class ReaderService:
                 full_content,
             ),
         )
+
+    def _build_draft_from_fetched(self, item: FeedArticle, fetched: FetchedArticleContent) -> ArticleDraft:
+        title = fetched.title or item.title
+        author = fetched.author or item.author
+        publish_time = fetched.publish_time or item.published_at
+        full_content = fetched.content_text.strip() or item.summary_text.strip() or item.title
+        return ArticleDraft(
+            feed_name=item.feed_name,
+            feed_url=item.feed_url,
+            title=title,
+            author=author,
+            publish_time=publish_time,
+            url=item.url,
+            full_content=full_content,
+            raw_html=fetched.raw_html,
+            content_source=fetched.content_source,
+            capture_status=fetched.capture_status,
+            fingerprint=build_fingerprint(
+                item.feed_name,
+                publish_time.date(),
+                title,
+                item.url,
+                full_content,
+            ),
+        )
+
+    def _should_enhance(self, existing: StoredArticle, draft: ArticleDraft, target_date: date) -> bool:
+        if existing.publish_time.date() != target_date:
+            return False
+        if draft.content_source not in STRONG_CONTENT_SOURCES:
+            return False
+        existing_is_weak = (
+            existing.content_source in WEAK_CONTENT_SOURCES or existing.capture_status in WEAK_CAPTURE_STATUSES
+        )
+        if not existing_is_weak:
+            return False
+        return len(draft.full_content.strip()) > len(existing.full_content.strip())
 
     def _archive_raw_html(self, target_date: date, draft: ArticleDraft) -> None:
         if not draft.raw_html:

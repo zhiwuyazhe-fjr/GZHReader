@@ -79,6 +79,25 @@ class WeWeRSSConfig(StrictBaseModel):
         return self
 
 
+class ArticleFetchConfig(StrictBaseModel):
+    enabled: bool = True
+    trigger: Literal["missing_rss_content"] = "missing_rss_content"
+    mode: Literal["hybrid"] = "hybrid"
+    timeout_seconds: int = 20
+    browser_channel_order: list[str] = Field(default_factory=lambda: ["msedge", "chrome"])
+    max_content_chars: int = 12000
+
+    @model_validator(mode="after")
+    def _validate_model(self) -> "ArticleFetchConfig":
+        if self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        if self.max_content_chars <= 0:
+            raise ValueError("max_content_chars must be positive")
+        if not self.browser_channel_order:
+            raise ValueError("browser_channel_order must not be empty")
+        return self
+
+
 class LLMConfig(StrictBaseModel):
     base_url: str = "https://api.openai.com/v1"
     api_key: str = ""
@@ -110,6 +129,7 @@ class AppConfig(StrictBaseModel):
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     rss: RSSConfig = Field(default_factory=RSSConfig)
     wewe_rss: WeWeRSSConfig = Field(default_factory=WeWeRSSConfig)
+    article_fetch: ArticleFetchConfig = Field(default_factory=ArticleFetchConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
 
@@ -118,6 +138,7 @@ class AppConfig(StrictBaseModel):
     def _migrate_legacy_shape(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
+
         migrated = dict(data)
 
         if "feeds" not in migrated and isinstance(migrated.get("accounts"), list):
@@ -127,7 +148,7 @@ class AppConfig(StrictBaseModel):
                     continue
                 feeds.append(
                     {
-                        "name": item.get("name") or item.get("wechat_id") or "未命名公众号",
+                        "name": item.get("name") or item.get("wechat_id") or "Unnamed Feed",
                         "url": item.get("url", ""),
                         "active": item.get("active", True),
                         "order": item.get("order", 0),
@@ -138,9 +159,9 @@ class AppConfig(StrictBaseModel):
 
         output = migrated.get("output")
         if isinstance(output, dict) and "raw_archive_dir" not in output and "html_archive_dir" in output:
-            output = dict(output)
-            output["raw_archive_dir"] = output.get("html_archive_dir")
-            migrated["output"] = output
+            updated_output = dict(output)
+            updated_output["raw_archive_dir"] = updated_output.get("html_archive_dir")
+            migrated["output"] = updated_output
 
         return migrated
 
@@ -149,7 +170,7 @@ def default_config() -> AppConfig:
     return AppConfig(
         feeds=[
             FeedConfig(
-                name="新智元",
+                name="?????",
                 url="http://localhost:4000/feeds/replace-me.atom",
                 active=True,
                 order=1,
@@ -160,7 +181,7 @@ def default_config() -> AppConfig:
 
 def ensure_config(path: Path) -> AppConfig:
     if not path.exists():
-        raise FileNotFoundError(f"配置文件不存在: {path}")
+        raise FileNotFoundError(f"???????: {path}")
     return load_config(path)
 
 

@@ -59,6 +59,8 @@ class StoredArticle:
     summary: str
     summary_status: str
     summary_error: str
+    fingerprint: str = ""
+    run_key: str = ""
 
 
 @dataclass(slots=True)

@@ -6,8 +6,9 @@ from pathlib import Path
 
 import typer
 
+from .article_fetcher import ArticleContentFetcher
 from .briefing import BriefingBuilder
-from .config import default_config, ensure_config, load_config, save_config
+from .config import AppConfig, default_config, ensure_config, load_config, save_config
 from .logging_utils import configure_logging
 from .rss_client import RSSClient
 from .scheduler import install_schedule, remove_schedule
@@ -17,10 +18,10 @@ from .summarizer import OpenAICompatibleSummarizer
 from .types import DoctorCheck
 from .wewe_rss import WeWeRSSManager
 
-app = typer.Typer(help="RSS 版微信公众号日报工具")
-run_app = typer.Typer(help="执行一次 RSS 拉取与日报生成")
-schedule_app = typer.Typer(help="管理 Windows 计划任务")
-wewe_app = typer.Typer(help="管理本地 wewe-rss 服务")
+app = typer.Typer(help="RSS ??????????")
+run_app = typer.Typer(help="?? RSS ???????")
+schedule_app = typer.Typer(help="?? Windows ????")
+wewe_app = typer.Typer(help="???? wewe-rss ??")
 app.add_typer(run_app, name="run")
 app.add_typer(schedule_app, name="schedule")
 app.add_typer(wewe_app, name="wewe-rss")
@@ -28,11 +29,11 @@ app.add_typer(wewe_app, name="wewe-rss")
 
 @app.command()
 def init(
-    config: Path = typer.Option(Path("config.yaml"), "--config", help="配置文件路径"),
-    force: bool = typer.Option(False, "--force", help="覆盖已有配置文件"),
+    config: Path = typer.Option(Path("config.yaml"), "--config", help="??????"),
+    force: bool = typer.Option(False, "--force", help="????????"),
 ) -> None:
     if config.exists() and not force:
-        raise typer.BadParameter(f"配置文件已存在: {config}")
+        raise typer.BadParameter(f"???????: {config}")
     if force and config.exists():
         config.unlink()
 
@@ -49,20 +50,21 @@ def init(
     Path(cfg.output.raw_archive_dir).mkdir(parents=True, exist_ok=True)
     manager = WeWeRSSManager(cfg.wewe_rss)
     generated = manager.ensure_scaffold(force=False)
-    typer.echo(f"已初始化配置: {config}")
+    typer.echo(f"??????: {config}")
     for path in generated:
-        typer.echo(f"- 已生成: {path}")
+        typer.echo(f"- ???: {path}")
 
 
 @app.command()
-def doctor(config: Path = typer.Option(Path("config.yaml"), "--config", help="配置文件路径")) -> None:
+def doctor(config: Path = typer.Option(Path("config.yaml"), "--config", help="??????")) -> None:
     cfg = ensure_config(config)
     configure_logging(cfg.output.log_level)
     rss_client = RSSClient(cfg.rss)
     storage = Storage(cfg.db_path)
     summarizer = OpenAICompatibleSummarizer(cfg.llm)
     manager = WeWeRSSManager(cfg.wewe_rss)
-    checks = build_doctor_checks(cfg, rss_client, storage, summarizer, manager)
+    article_fetcher = ArticleContentFetcher(cfg.article_fetch, cfg.rss)
+    checks = build_doctor_checks(cfg, rss_client, storage, summarizer, manager, article_fetcher)
     failed = False
     for check in checks:
         prefix = "[OK]" if check.ok else "[FAIL]"
@@ -74,8 +76,8 @@ def doctor(config: Path = typer.Option(Path("config.yaml"), "--config", help="�
 
 @run_app.command("today")
 def run_today(
-    config: Path = typer.Option(Path("config.yaml"), "--config", help="配置文件路径"),
-    feed: str | None = typer.Option(None, "--feed", help="只跑某一个 feed 名称"),
+    config: Path = typer.Option(Path("config.yaml"), "--config", help="??????"),
+    feed: str | None = typer.Option(None, "--feed", help="????? feed ??"),
 ) -> None:
     _run_once(config, date.today(), feed)
 
@@ -83,15 +85,15 @@ def run_today(
 @run_app.command("date")
 def run_date(
     target_date: str,
-    config: Path = typer.Option(Path("config.yaml"), "--config", help="配置文件路径"),
-    feed: str | None = typer.Option(None, "--feed", help="只跑某一个 feed 名称"),
+    config: Path = typer.Option(Path("config.yaml"), "--config", help="??????"),
+    feed: str | None = typer.Option(None, "--feed", help="????? feed ??"),
 ) -> None:
     parsed = datetime.strptime(target_date, "%Y-%m-%d").date()
     _run_once(config, parsed, feed)
 
 
 @schedule_app.command("install")
-def schedule_install(config: Path = typer.Option(Path("config.yaml"), "--config", help="配置文件路径")) -> None:
+def schedule_install(config: Path = typer.Option(Path("config.yaml"), "--config", help="??????")) -> None:
     cfg = ensure_config(config)
     configure_logging(cfg.output.log_level)
     typer.echo(install_schedule(cfg, config))
@@ -104,8 +106,8 @@ def schedule_remove() -> None:
 
 @wewe_app.command("init")
 def wewe_init(
-    config: Path = typer.Option(Path("config.yaml"), "--config", help="配置文件路径"),
-    force: bool = typer.Option(False, "--force", help="覆盖已存在的 docker compose 入口文件"),
+    config: Path = typer.Option(Path("config.yaml"), "--config", help="??????"),
+    force: bool = typer.Option(False, "--force", help="???? docker compose ??"),
 ) -> None:
     cfg = ensure_config(config)
     manager = WeWeRSSManager(cfg.wewe_rss)
@@ -114,21 +116,21 @@ def wewe_init(
 
 
 @wewe_app.command("up")
-def wewe_up(config: Path = typer.Option(Path("config.yaml"), "--config", help="配置文件路径")) -> None:
+def wewe_up(config: Path = typer.Option(Path("config.yaml"), "--config", help="??????")) -> None:
     cfg = ensure_config(config)
     manager = WeWeRSSManager(cfg.wewe_rss)
     typer.echo(manager.up())
 
 
 @wewe_app.command("down")
-def wewe_down(config: Path = typer.Option(Path("config.yaml"), "--config", help="配置文件路径")) -> None:
+def wewe_down(config: Path = typer.Option(Path("config.yaml"), "--config", help="??????")) -> None:
     cfg = ensure_config(config)
     manager = WeWeRSSManager(cfg.wewe_rss)
     typer.echo(manager.down())
 
 
 @wewe_app.command("logs")
-def wewe_logs(config: Path = typer.Option(Path("config.yaml"), "--config", help="配置文件路径")) -> None:
+def wewe_logs(config: Path = typer.Option(Path("config.yaml"), "--config", help="??????")) -> None:
     cfg = ensure_config(config)
     manager = WeWeRSSManager(cfg.wewe_rss)
     typer.echo(manager.logs())
@@ -144,6 +146,7 @@ def _run_once(config_path: Path, target_date: date, feed_filter: str | None) -> 
         rss_client=RSSClient(cfg.rss),
         summarizer=OpenAICompatibleSummarizer(cfg.llm),
         briefing_builder=BriefingBuilder(),
+        article_fetcher=ArticleContentFetcher(cfg.article_fetch, cfg.rss),
     )
     result = service.run_for_date(target_date, feed_filter=feed_filter)
     typer.echo(
@@ -155,42 +158,55 @@ def _run_once(config_path: Path, target_date: date, feed_filter: str | None) -> 
         typer.echo(f"error {name}: {error}")
 
 
-def build_doctor_checks(cfg, rss_client, storage, summarizer, manager) -> list[DoctorCheck]:
-    checks: list[DoctorCheck] = []
-    checks.append(DoctorCheck(name="配置文件", ok=True, detail="配置可读取"))
+def build_doctor_checks(
+    cfg: AppConfig,
+    rss_client: RSSClient,
+    storage: Storage,
+    summarizer: OpenAICompatibleSummarizer,
+    manager: WeWeRSSManager,
+    article_fetcher: ArticleContentFetcher,
+) -> list[DoctorCheck]:
+    checks: list[DoctorCheck] = [DoctorCheck(name="????", ok=True, detail="?????")]
 
     try:
-        import feedparser as _  # noqa: F401
-        checks.append(DoctorCheck(name="RSS 依赖", ok=True, detail="feedparser 可用"))
+        import feedparser as _feedparser  # noqa: F401
+
+        checks.append(DoctorCheck(name="RSS ??", ok=True, detail="feedparser ??"))
     except Exception as exc:
-        checks.append(DoctorCheck(name="RSS 依赖", ok=False, detail=str(exc)))
+        checks.append(DoctorCheck(name="RSS ??", ok=False, detail=str(exc)))
+
+    http_ok, http_detail = article_fetcher.check_http_runtime()
+    checks.append(DoctorCheck(name="HTTP ????", ok=http_ok, detail=http_detail))
+
+    browser_ok, browser_detail = article_fetcher.check_browser_runtime()
+    checks.append(DoctorCheck(name="?????????", ok=browser_ok, detail=browser_detail))
 
     Path(cfg.db_path).parent.mkdir(parents=True, exist_ok=True)
     storage.init_db()
-    checks.append(DoctorCheck(name="SQLite", ok=True, detail=f"数据库可初始化: {cfg.db_path}"))
+    checks.append(DoctorCheck(name="SQLite", ok=True, detail=f"???????: {cfg.db_path}"))
 
     docker_ok, docker_detail = manager.check_docker()
     checks.append(DoctorCheck(name="Docker", ok=docker_ok, detail=docker_detail))
 
     generated = manager.ensure_scaffold(force=False)
-    checks.append(DoctorCheck(name="wewe-rss 脚手架", ok=True, detail=f"已就绪: {generated[-1]}"))
+    checks.append(DoctorCheck(name="wewe-rss ???", ok=True, detail=f"???: {generated[-1]}"))
 
     if cfg.wewe_rss.enabled:
         service_ok, service_detail = manager.check_service()
-        checks.append(DoctorCheck(name="wewe-rss 服务", ok=service_ok, detail=service_detail))
+        checks.append(DoctorCheck(name="wewe-rss ??", ok=service_ok, detail=service_detail))
 
     active_feeds = [feed for feed in cfg.feeds if feed.active]
     if not active_feeds:
-        checks.append(DoctorCheck(name="RSS 源", ok=False, detail="没有启用的 feeds"))
+        checks.append(DoctorCheck(name="RSS ?", ok=False, detail="????? feeds"))
     else:
         missing = [feed.name for feed in active_feeds if not feed.url]
         if missing:
-            checks.append(DoctorCheck(name="RSS 源", ok=False, detail=f"这些 feed 缺少 url: {', '.join(missing)}"))
+            checks.append(DoctorCheck(name="RSS ?", ok=False, detail=f"?? feed ?? url: {', '.join(missing)}"))
         else:
             for feed in active_feeds[:5]:
                 ok, detail = rss_client.check_feed(feed)
-                checks.append(DoctorCheck(name=f"RSS 源 {feed.name}", ok=ok, detail=detail))
+                checks.append(DoctorCheck(name=f"RSS ? {feed.name}", ok=ok, detail=detail))
 
     llm_ok, llm_detail = summarizer.check_connectivity()
-    checks.append(DoctorCheck(name="LLM 接口", ok=llm_ok, detail=llm_detail))
+    checks.append(DoctorCheck(name="LLM ??", ok=llm_ok, detail=llm_detail))
     return checks

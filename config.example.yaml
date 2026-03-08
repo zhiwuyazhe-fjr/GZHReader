@@ -1,6 +1,6 @@
 db_path: ./data/gzhreader.db
 feeds:
-  - name: 新智元
+  - name: ?????
     url: http://localhost:4000/feeds/replace-me.atom
     active: true
     order: 1
@@ -22,6 +22,15 @@ wewe_rss:
   port: 4000
   server_origin_url: http://localhost:4000
   image: cooderl/wewe-rss:latest
+article_fetch:
+  enabled: true
+  trigger: missing_rss_content
+  mode: hybrid
+  timeout_seconds: 20
+  browser_channel_order:
+    - msedge
+    - chrome
+  max_content_chars: 12000
 llm:
   base_url: https://api.openai.com/v1
   api_key: ''

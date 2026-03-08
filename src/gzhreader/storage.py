@@ -1,6 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -96,21 +97,29 @@ class Storage:
                         author = excluded.author,
                         tags_json = excluded.tags_json
                     """,
-                    (feed.name, feed.url, int(feed.active), feed.order, feed.author or '', '[]'),
+                    (
+                        feed.name,
+                        feed.url,
+                        int(feed.active),
+                        feed.order,
+                        feed.author or "",
+                        json.dumps(feed.tags, ensure_ascii=False),
+                    ),
                 )
 
     def list_feeds(self, active_only: bool = True, name: str | None = None) -> list[FeedConfig]:
-        sql = 'SELECT name, url, active, feed_order, author FROM feeds'
+        sql = "SELECT name, url, active, feed_order, author, tags_json FROM feeds"
         clauses: list[str] = []
         params: list[object] = []
         if active_only:
-            clauses.append('active = 1')
+            clauses.append("active = 1")
         if name:
-            clauses.append('name = ?')
+            clauses.append("name = ?")
             params.append(name)
         if clauses:
-            sql += ' WHERE ' + ' AND '.join(clauses)
-        sql += ' ORDER BY feed_order ASC, name ASC'
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY feed_order ASC, name ASC"
+
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [
@@ -120,6 +129,7 @@ class Storage:
                 active=bool(row[2]),
                 order=int(row[3]),
                 author=row[4] or None,
+                tags=json.loads(row[5] or "[]"),
             )
             for row in rows
         ]
@@ -127,7 +137,10 @@ class Storage:
     def start_run(self, run_key: str, target_date: date) -> None:
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO runs(run_key, target_date, status, collected, inserted, summarized, error_count, briefing_path, notes) VALUES (?, ?, 'running', 0, 0, 0, 0, '', '')",
+                """
+                INSERT INTO runs(run_key, target_date, status, collected, inserted, summarized, error_count, briefing_path, notes)
+                VALUES (?, ?, 'running', 0, 0, 0, 0, '', '')
+                """,
                 (run_key, target_date.isoformat()),
             )
 
@@ -154,15 +167,37 @@ class Storage:
                 (status, collected, inserted, summarized, error_count, briefing_path, notes, run_key),
             )
 
-    def insert_article_if_new(self, draft: ArticleDraft, run_key: str) -> bool:
+    def find_article(self, url: str, fingerprint: str) -> StoredArticle | None:
         with self._connect() as conn:
-            if draft.url:
-                existing = conn.execute('SELECT 1 FROM articles WHERE url = ?', (draft.url,)).fetchone()
-                if existing:
-                    return False
-            existing = conn.execute('SELECT 1 FROM articles WHERE fingerprint = ?', (draft.fingerprint,)).fetchone()
-            if existing:
-                return False
+            row = None
+            if url:
+                row = conn.execute(
+                    """
+                    SELECT id, feed_name, feed_url, title, author, publish_time, url, full_content, raw_html,
+                           content_source, capture_status, summary, summary_status, summary_error, fingerprint, run_key
+                    FROM articles
+                    WHERE url = ?
+                    LIMIT 1
+                    """,
+                    (url,),
+                ).fetchone()
+            if row is None and fingerprint:
+                row = conn.execute(
+                    """
+                    SELECT id, feed_name, feed_url, title, author, publish_time, url, full_content, raw_html,
+                           content_source, capture_status, summary, summary_status, summary_error, fingerprint, run_key
+                    FROM articles
+                    WHERE fingerprint = ?
+                    LIMIT 1
+                    """,
+                    (fingerprint,),
+                ).fetchone()
+        return self._row_to_stored_article(row) if row is not None else None
+
+    def insert_article_if_new(self, draft: ArticleDraft, run_key: str) -> bool:
+        if self.find_article(draft.url, draft.fingerprint) is not None:
+            return False
+        with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO articles(
@@ -188,14 +223,42 @@ class Storage:
                     run_key,
                 ),
             )
-            return True
+        return True
+
+    def enhance_article(self, article_id: int, draft: ArticleDraft, run_key: str) -> bool:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE articles
+                SET feed_name = ?, feed_url = ?, title = ?, author = ?, publish_time = ?, url = ?,
+                    full_content = ?, raw_html = ?, content_source = ?, capture_status = ?,
+                    summary = '', summary_status = 'pending', summary_error = '', fingerprint = ?, run_key = ?
+                WHERE id = ?
+                """,
+                (
+                    draft.feed_name,
+                    draft.feed_url,
+                    draft.title,
+                    draft.author,
+                    draft.publish_time.isoformat(),
+                    draft.url,
+                    draft.full_content,
+                    draft.raw_html,
+                    draft.content_source,
+                    draft.capture_status,
+                    draft.fingerprint,
+                    run_key,
+                    article_id,
+                ),
+            )
+        return True
 
     def get_unsummarized_for_date(self, target_date: date) -> list[StoredArticle]:
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT id, feed_name, feed_url, title, author, publish_time, url, full_content, raw_html,
-                       content_source, capture_status, summary, summary_status, summary_error
+                       content_source, capture_status, summary, summary_status, summary_error, fingerprint, run_key
                 FROM articles
                 WHERE substr(publish_time, 1, 10) = ? AND summary_status = 'pending'
                 ORDER BY publish_time ASC, id ASC
@@ -264,19 +327,47 @@ class Storage:
 
     def _migrate_legacy_schema(self, conn: sqlite3.Connection) -> None:
         required_columns = {
-            'feeds': {'name', 'url', 'active', 'feed_order', 'author', 'tags_json'},
-            'runs': {'run_key', 'target_date', 'status', 'collected', 'inserted', 'summarized', 'error_count', 'briefing_path', 'notes', 'created_at', 'updated_at'},
-            'articles': {'feed_name', 'feed_url', 'title', 'author', 'publish_time', 'url', 'full_content', 'raw_html', 'content_source', 'capture_status', 'summary', 'summary_status', 'summary_error', 'fingerprint', 'run_key'},
-            'briefings': {'target_date', 'markdown', 'created_at', 'updated_at'},
+            "feeds": {"name", "url", "active", "feed_order", "author", "tags_json"},
+            "runs": {
+                "run_key",
+                "target_date",
+                "status",
+                "collected",
+                "inserted",
+                "summarized",
+                "error_count",
+                "briefing_path",
+                "notes",
+                "created_at",
+                "updated_at",
+            },
+            "articles": {
+                "feed_name",
+                "feed_url",
+                "title",
+                "author",
+                "publish_time",
+                "url",
+                "full_content",
+                "raw_html",
+                "content_source",
+                "capture_status",
+                "summary",
+                "summary_status",
+                "summary_error",
+                "fingerprint",
+                "run_key",
+            },
+            "briefings": {"target_date", "markdown", "created_at", "updated_at"},
         }
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         for table, expected in required_columns.items():
             existing = self._table_columns(conn, table)
             if not existing:
                 continue
             if expected.issubset(existing):
                 continue
-            backup_name = f'{table}_legacy_{timestamp}'
+            backup_name = f"{table}_legacy_{timestamp}"
             conn.execute(f'ALTER TABLE "{table}" RENAME TO "{backup_name}"')
 
     def _table_columns(self, conn: sqlite3.Connection, table: str) -> set[str]:
@@ -299,6 +390,8 @@ class Storage:
             summary=row[11],
             summary_status=row[12],
             summary_error=row[13],
+            fingerprint=row[14],
+            run_key=row[15],
         )
 
     def _connect(self) -> sqlite3.Connection:
@@ -317,4 +410,4 @@ def build_fingerprint(feed_name: str, published_date: date, title: str, url: str
             " ".join(content.split())[:2000],
         ]
     )
-    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
