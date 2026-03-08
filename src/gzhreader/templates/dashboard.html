@@ -1,0 +1,562 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GZHReader 控制台</title>
+  <script src="/assets/htmx.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --surface: rgba(255, 255, 255, 0.9);
+      --surface-strong: #ffffff;
+      --surface-soft: #f7faff;
+      --border: #d9e3f2;
+      --text: #10233f;
+      --muted: #5d6f86;
+      --brand: #2563eb;
+      --brand-strong: #1d4ed8;
+      --brand-soft: #eff6ff;
+      --ok: #15803d;
+      --ok-soft: #ecfdf3;
+      --warn: #b45309;
+      --warn-soft: #fff7ed;
+      --danger: #b91c1c;
+      --danger-soft: #fef2f2;
+      --shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.08);
+      --shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.06);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 28%),
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.1), transparent 26%),
+        linear-gradient(180deg, #eef4ff 0%, #f4f7fb 220px, #f4f7fb 100%);
+    }
+    a { color: inherit; }
+    .container { max-width: 1120px; margin: 0 auto; padding: 28px 18px 48px; }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius-xl);
+      padding: 30px;
+      background: linear-gradient(135deg, #0f3ea8 0%, #2563eb 52%, #4f8df7 100%);
+      color: #fff;
+      box-shadow: var(--shadow-lg);
+      margin-bottom: 18px;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -40px;
+      top: -30px;
+      width: 220px;
+      height: 220px;
+      background: radial-gradient(circle, rgba(255,255,255,0.22), rgba(255,255,255,0));
+      pointer-events: none;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.8fr);
+      gap: 18px;
+      align-items: end;
+      position: relative;
+      z-index: 1;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 999px;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .hero h1 { margin: 0 0 10px; font-size: 34px; line-height: 1.2; }
+    .hero p { margin: 0; line-height: 1.8; opacity: 0.95; }
+    .hero-side {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 22px;
+      padding: 18px;
+      backdrop-filter: blur(8px);
+    }
+    .hero-side .kicker { font-size: 13px; opacity: 0.84; margin-bottom: 8px; }
+    .hero-side code {
+      display: block;
+      margin-top: 6px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(10, 18, 36, 0.24);
+      color: #eef5ff;
+      overflow-wrap: anywhere;
+    }
+    .main-stack { display: grid; gap: 18px; }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      backdrop-filter: blur(10px);
+    }
+    .panel-title {
+      margin: 0 0 8px;
+      font-size: 22px;
+      line-height: 1.3;
+    }
+    .subtle { color: var(--muted); line-height: 1.8; font-size: 14px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .between { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .helper-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .helper-card {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      border-radius: 18px;
+      padding: 16px;
+    }
+    .helper-card strong { display: block; margin-bottom: 6px; }
+    .helper-card code { font-size: 14px; }
+    .button, button {
+      border: 0;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--brand-strong), var(--brand));
+      color: #fff;
+      padding: 11px 16px;
+      min-height: 44px;
+      font: inherit;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.16);
+    }
+    .button:hover, button:hover { transform: translateY(-1px); }
+    .button.light, button.light {
+      background: #edf3ff;
+      color: #10305e;
+      box-shadow: none;
+    }
+    .button.ghost, button.ghost {
+      background: transparent;
+      color: var(--brand-strong);
+      border: 1px solid #bfd4fb;
+      box-shadow: none;
+    }
+    .button.warn, button.warn {
+      background: linear-gradient(135deg, #f59e0b, #f97316);
+      box-shadow: 0 10px 20px rgba(249, 115, 22, 0.18);
+    }
+    button:disabled, fieldset:disabled button, fieldset:disabled .button {
+      opacity: 0.56;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 11px 12px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+    }
+    textarea { min-height: 260px; resize: vertical; font-family: Consolas, monospace; font-size: 13px; }
+    .field { display: grid; gap: 7px; }
+    .field label { font-size: 14px; color: var(--muted); }
+    .field-note { font-size: 12px; color: var(--muted); }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .flash {
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 18px;
+      border: 1px solid var(--border);
+      line-height: 1.7;
+      box-shadow: var(--shadow-sm);
+      background: var(--surface-soft);
+    }
+    .flash.success { background: var(--ok-soft); border-color: #bbf7d0; color: #166534; }
+    .flash.warning { background: var(--warn-soft); border-color: #fdba74; color: #9a3412; }
+    .flash.error { background: var(--danger-soft); border-color: #fca5a5; color: #991b1b; }
+    .flash.info { background: var(--brand-soft); border-color: #bfdbfe; color: #1d4ed8; }
+    .wizard { display: grid; gap: 14px; }
+    .step-card {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 18px;
+      background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+    }
+    .step-card.current {
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+    }
+    .step-card.done {
+      background: linear-gradient(180deg, #ffffff 0%, #f4fff8 100%);
+    }
+    .step-card.locked {
+      background: #f8fafc;
+      opacity: 0.75;
+    }
+    .step-head {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .step-no {
+      width: 44px;
+      height: 44px;
+      flex: 0 0 44px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+    .step-card.done .step-no { background: #dcfce7; color: #166534; }
+    .step-card.locked .step-no { background: #e5e7eb; color: #6b7280; }
+    .step-title { margin: 0 0 4px; font-size: 19px; }
+    .step-summary { color: var(--muted); line-height: 1.7; }
+    .status-pill {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+    .status-pill.done { background: #dcfce7; color: #166534; }
+    .status-pill.locked { background: #e5e7eb; color: #6b7280; }
+    .step-body { margin-top: 14px; padding-left: 58px; display: grid; gap: 12px; }
+    .detail-box {
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      border-radius: 16px;
+      padding: 12px 14px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+    .status-list { display: grid; gap: 8px; }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #fff;
+    }
+    .status-meta { color: var(--muted); font-size: 13px; margin-top: 3px; }
+    .badge {
+      flex: 0 0 auto;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .badge.ok { color: #166534; background: #dcfce7; }
+    .badge.bad { color: #991b1b; background: #fee2e2; }
+    .wizard-form { display: grid; gap: 12px; }
+    fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: 12px; min-width: 0; }
+    .time-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      gap: 10px;
+      align-items: end;
+      max-width: 360px;
+    }
+    .time-sep { color: var(--muted); font-size: 24px; padding-bottom: 8px; text-align: center; }
+    .schedule-shell { display: grid; gap: 14px; }
+    .schedule-banner {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: stretch;
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid #bfdbfe;
+      background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+    }
+    .schedule-kicker { color: #1d4ed8; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+    .schedule-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: #10233f; }
+    .schedule-current {
+      min-width: 176px;
+      display: grid;
+      gap: 4px;
+      align-content: center;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid #dbeafe;
+      color: #1d4ed8;
+    }
+    .schedule-current span { font-size: 12px; color: var(--muted); }
+    .schedule-current strong { font-size: 24px; line-height: 1; }
+    .schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .schedule-card {
+      display: grid;
+      gap: 10px;
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+    }
+    .schedule-card-tag {
+      display: inline-flex;
+      width: fit-content;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #e0e7ff;
+      color: #3730a3;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .schedule-card-title { font-size: 17px; font-weight: 700; color: #10233f; }
+    .schedule-time-grid { max-width: none; }
+    .schedule-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .schedule-preview-item {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: #fff;
+    }
+    .schedule-preview-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .schedule-preview-value { font-size: 15px; font-weight: 700; color: #10233f; line-height: 1.6; }
+    .results-toolbar { align-items: flex-start; }
+    .output-settings {
+      display: grid;
+      gap: 14px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .output-settings-copy { display: grid; gap: 8px; }
+    .output-settings-title { font-size: 18px; font-weight: 700; color: #10233f; }
+    .output-dir-actions { display: grid; gap: 10px; }
+    .output-dir-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+    .results-list { display: grid; gap: 10px; }
+    .result-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .meta { color: var(--muted); font-size: 13px; }
+    code {
+      background: #eff6ff;
+      color: #194385;
+      padding: 2px 6px;
+      border-radius: 8px;
+      overflow-wrap: anywhere;
+    }
+    .docker-shell {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.72fr);
+    }
+    .docker-hero {
+      display: grid;
+      gap: 14px;
+    }
+    .docker-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #fff7ed;
+      color: #9a3412;
+      border: 1px solid #fdba74;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .docker-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+    .checklist { display: grid; gap: 10px; }
+    .check-item {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .check-item strong { display: block; margin-bottom: 6px; }
+    .advanced summary { cursor: pointer; font-weight: 700; }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+      white-space: nowrap;
+    }
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline-flex; }
+    .busy-banner {
+      display: none;
+      position: sticky;
+      top: 14px;
+      z-index: 50;
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid #bfdbfe;
+      background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+      color: #1d4ed8;
+      box-shadow: var(--shadow-sm);
+      line-height: 1.7;
+    }
+    .busy-banner.show { display: block; }
+    @media (max-width: 880px) {
+      .hero-grid, .docker-shell { grid-template-columns: 1fr; }
+      .helper-grid, .grid-2, .grid-3, .schedule-grid, .schedule-preview { grid-template-columns: 1fr; }
+      .schedule-banner { grid-template-columns: 1fr; }
+      .output-dir-form { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .container { padding: 18px 14px 36px; }
+      .hero { padding: 22px; border-radius: 24px; }
+      .hero h1 { font-size: 28px; }
+      .step-head { flex-wrap: wrap; }
+      .status-pill { margin-left: 0; }
+      .step-body { padding-left: 0; }
+      .result-item, .status-row, .between, .schedule-banner { flex-direction: column; align-items: flex-start; }
+      .time-grid { grid-template-columns: 1fr; max-width: none; }
+      .time-sep { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <div class="eyebrow">{{ '首次安装引导' if docker_blocked else '本地设置助手' }}</div>
+          <h1>{{ '先准备 Docker Desktop，再继续 GZHReader' if docker_blocked else 'GZHReader 本地日报设置向导' }}</h1>
+          <p>
+            {% if docker_blocked %}
+              当前先把 Docker Desktop 装好并启动起来。等它就绪后，这个页面会自动切回正式向导，继续带你完成 RSS、LLM、计划任务和日报测试。
+            {% else %}
+              跟着这 8 个步骤完成设置后，程序就会自动读取 RSS、补抓正文、调用 LLM 生成总结，并输出 Markdown 日报。
+            {% endif %}
+          </p>
+        </div>
+        <div class="hero-side">
+          <div class="kicker">当前聚合源</div>
+          <code>{{ config.source.url }}</code>
+          <div class="kicker" style="margin-top: 12px;">wewe-rss 后台</div>
+          <code>{{ config.wewe_rss.base_url }}</code>
+        </div>
+      </div>
+    </section>
+
+    <div id="busy-banner" class="busy-banner" aria-live="polite"></div>
+    <div id="flash-area">{% include "partials/flash.html" %}</div>
+
+    <main id="main-shell" class="main-stack">{% include "partials/main_content.html" %}</main>
+    <div id="action-response" class="sr-only"></div>
+  </div>
+  <script>
+    (() => {
+      const busyBanner = document.getElementById('busy-banner');
+      if (!busyBanner || !window.htmx) return;
+
+      const defaultMessage = '正在处理，请稍候…';
+      const messageByPath = (path) => {
+        if (!path) return defaultMessage;
+        if (path.includes('/actions/run-now')) return '正在生成日报，这一步可能需要几十秒，请先别关闭页面。';
+        if (path.includes('/actions/pick-output-dir')) return '正在打开系统目录选择器，请在弹出的窗口里完成选择。';
+        if (path.includes('/actions/install-schedule')) return '正在保存并安装计划任务，请稍候。';
+        if (path.includes('/actions/start-rss')) return '正在启动 RSS 服务，请稍候。';
+        return defaultMessage;
+      };
+
+      const showBusy = (message) => {
+        busyBanner.textContent = message;
+        busyBanner.classList.add('show');
+      };
+
+      const hideBusy = () => {
+        busyBanner.textContent = '';
+        busyBanner.classList.remove('show');
+      };
+
+      document.body.addEventListener('htmx:beforeRequest', (event) => {
+        const path = event.detail?.pathInfo?.requestPath || '';
+        showBusy(messageByPath(path));
+      });
+      document.body.addEventListener('htmx:afterRequest', hideBusy);
+      document.body.addEventListener('htmx:responseError', hideBusy);
+      document.body.addEventListener('htmx:sendError', hideBusy);
+
+      const bindSchedulePreview = (root = document) => {
+        const hourSelect = root.querySelector('#schedule-hour-select');
+        const minuteSelect = root.querySelector('#schedule-minute-select');
+        const limitSelect = root.querySelector('#daily-article-limit-select');
+        const timePreview = root.querySelector('#schedule-preview-time');
+        const limitPreview = root.querySelector('#schedule-preview-limit');
+        if (!hourSelect || !minuteSelect || !limitSelect || !timePreview || !limitPreview) return;
+
+        const renderPreview = () => {
+          const hour = String(hourSelect.value ?? '').padStart(2, '0');
+          const minute = String(minuteSelect.value ?? '').padStart(2, '0');
+          const selectedOption = limitSelect.options[limitSelect.selectedIndex];
+          const limitLabel = selectedOption?.dataset?.label || selectedOption?.text || '';
+          timePreview.textContent = `\u6bcf\u5929 ${hour}:${minute}`;
+          limitPreview.textContent = limitLabel;
+        };
+
+        for (const element of [hourSelect, minuteSelect, limitSelect]) {
+          if (element.dataset.previewBound === 'true') continue;
+          element.addEventListener('change', renderPreview);
+          element.dataset.previewBound = 'true';
+        }
+        renderPreview();
+      };
+
+      bindSchedulePreview();
+      document.body.addEventListener('htmx:afterSwap', (event) => {
+        const target = event.detail?.target;
+        if (target && (target.id === 'main-shell' || target.closest?.('#main-shell'))) {
+          bindSchedulePreview(target);
+          return;
+        }
+        bindSchedulePreview();
+      });
+    })();
+  </script>
+</body>
+</html>

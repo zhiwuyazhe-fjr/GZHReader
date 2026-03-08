@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .article_fetcher import ArticleContentFetcher, FetchedArticleContent
 from .briefing import BriefingBuilder
-from .config import AppConfig
+from .config import AppConfig, describe_daily_article_limit
 from .rss_client import RSSClient
 from .storage import Storage, build_fingerprint
 from .summarizer import OpenAICompatibleSummarizer, SummarizeInput
-from .types import ArticleDraft, DailyRunResult, FeedArticle, StoredArticle
+from .types import ArticleDraft, ArticleView, DailyRunResult, FeedArticle, StoredArticle
 
 logger = logging.getLogger(__name__)
 
@@ -42,19 +43,29 @@ class ReaderService:
         run_key = uuid.uuid4().hex[:8]
         result = DailyRunResult(run_key=run_key, date=target_date)
         self.storage.init_db()
-        self.storage.upsert_feeds(self.config.feeds)
+        self.storage.upsert_feeds(self.config.runtime_feeds())
         self.storage.start_run(run_key, target_date)
         feeds = self.storage.list_feeds(active_only=True, name=feed_filter)
 
         for feed in feeds:
             try:
                 collected = self.rss_client.fetch_feed(feed)
-                for item in collected:
-                    result.collected += 1
-                    if not self.rss_client.in_window(item.published_at, target_date):
-                        result.filtered_out += 1
-                        continue
+                result.collected += len(collected)
 
+                daily_articles = [item for item in collected if self.rss_client.in_window(item.published_at, target_date)]
+                selected_articles = self._apply_daily_article_limit(daily_articles)
+                result.filtered_out += len(collected) - len(selected_articles)
+                logger.info(
+                    "RSS: selected %s articles for %s from %s (source_returned=%s, date_matched=%s, limit=%s)",
+                    len(selected_articles),
+                    target_date.isoformat(),
+                    feed.name,
+                    len(collected),
+                    len(daily_articles),
+                    describe_daily_article_limit(self.config.rss.daily_article_limit),
+                )
+
+                for item in selected_articles:
                     draft = self._build_draft(item)
                     existing = self.storage.find_article(draft.url, draft.fingerprint)
                     if existing is None:
@@ -71,7 +82,7 @@ class ReaderService:
             except Exception as exc:
                 result.feed_errors[feed.name] = str(exc)
 
-        for article in self.storage.get_unsummarized_for_date(target_date):
+        for article in self._pending_articles_for_target_date(target_date):
             try:
                 content = article.full_content or article.title
                 summary = self.summarizer.summarize(
@@ -82,7 +93,7 @@ class ReaderService:
             except Exception as exc:
                 self.storage.mark_article_summary_failed(article.id, str(exc))
 
-        views = self.storage.get_article_views_for_date(target_date)
+        views = self._article_views_for_target_date(target_date)
         markdown = self.briefing_builder.build(target_date, views)
         self.storage.save_briefing(target_date, markdown)
 
@@ -103,6 +114,12 @@ class ReaderService:
             notes="; ".join(f"{key}: {value}" for key, value in result.feed_errors.items()),
         )
         return result
+
+    def _apply_daily_article_limit(self, items: list[FeedArticle]) -> list[FeedArticle]:
+        limit = self.config.rss.daily_article_limit
+        if limit == "all":
+            return list(items)
+        return list(items)[:limit]
 
     def _build_draft(self, item: FeedArticle) -> ArticleDraft:
         base_draft = self._build_draft_from_rss(item)
@@ -152,7 +169,7 @@ class ReaderService:
             feed_url=item.feed_url,
             title=item.title,
             author=item.author,
-            publish_time=item.published_at,
+            publish_time=self._normalize_publish_time(item.published_at),
             url=item.url,
             full_content=full_content,
             raw_html=raw_html,
@@ -170,7 +187,7 @@ class ReaderService:
     def _build_draft_from_fetched(self, item: FeedArticle, fetched: FetchedArticleContent) -> ArticleDraft:
         title = fetched.title or item.title
         author = fetched.author or item.author
-        publish_time = fetched.publish_time or item.published_at
+        publish_time = self._normalize_publish_time(fetched.publish_time or item.published_at)
         full_content = fetched.content_text.strip() or item.summary_text.strip() or item.title
         return ArticleDraft(
             feed_name=item.feed_name,
@@ -193,7 +210,7 @@ class ReaderService:
         )
 
     def _should_enhance(self, existing: StoredArticle, draft: ArticleDraft, target_date: date) -> bool:
-        if existing.publish_time.date() != target_date:
+        if not self.rss_client.in_window(existing.publish_time, target_date):
             return False
         if draft.content_source not in STRONG_CONTENT_SOURCES:
             return False
@@ -203,6 +220,34 @@ class ReaderService:
         if not existing_is_weak:
             return False
         return len(draft.full_content.strip()) > len(existing.full_content.strip())
+
+    def _pending_articles_for_target_date(self, target_date: date) -> list[StoredArticle]:
+        return [
+            article
+            for article in self.storage.get_unsummarized_articles()
+            if self.rss_client.in_window(article.publish_time, target_date)
+        ]
+
+    def _article_views_for_target_date(self, target_date: date) -> list[ArticleView]:
+        return [
+            view
+            for view in self.storage.get_all_article_views()
+            if self.rss_client.in_window(view.publish_time, target_date)
+        ]
+
+    def _normalize_publish_time(self, publish_time):
+        if publish_time.tzinfo is None:
+            timezone_obj = getattr(self.rss_client, "timezone", None)
+            if timezone_obj is None:
+                try:
+                    timezone_obj = ZoneInfo(self.config.rss.timezone)
+                except ZoneInfoNotFoundError:
+                    if self.config.rss.timezone == "Asia/Shanghai":
+                        timezone_obj = timezone(timedelta(hours=8), name="Asia/Shanghai")
+                    else:
+                        timezone_obj = timezone.utc
+            publish_time = publish_time.replace(tzinfo=timezone_obj)
+        return publish_time.astimezone(timezone.utc)
 
     def _archive_raw_html(self, target_date: date, draft: ArticleDraft) -> None:
         if not self.config.output.save_raw_html:

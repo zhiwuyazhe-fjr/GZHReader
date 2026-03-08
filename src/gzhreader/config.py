@@ -1,11 +1,45 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def build_default_source_url(base_url: str) -> str:
+    normalized = base_url.strip().rstrip("/") or "http://localhost:4000"
+    return f"{normalized}/feeds/all.atom"
+
+
+DAILY_ARTICLE_LIMIT_PRESETS: tuple[Literal["all"] | int, ...] = ("all", 20, 30, 40, 50, 100)
+
+
+def normalize_daily_article_limit(value: Any) -> Literal["all"] | int:
+    if isinstance(value, bool):
+        raise ValueError("daily_article_limit must be 'all' or a positive integer")
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "all":
+            return "all"
+        if normalized.isdigit():
+            value = int(normalized)
+        else:
+            raise ValueError("daily_article_limit must be 'all' or a positive integer")
+    if isinstance(value, int):
+        if value <= 0:
+            raise ValueError("daily_article_limit must be positive")
+        return value
+    raise ValueError("daily_article_limit must be 'all' or a positive integer")
+
+
+def describe_daily_article_limit(value: Literal["all"] | int) -> str:
+    normalized = normalize_daily_article_limit(value)
+    if normalized == "all":
+        return "当天全部"
+    return f"每天最多 {normalized} 篇"
 
 
 class StrictBaseModel(BaseModel):
@@ -29,6 +63,19 @@ class FeedConfig(StrictBaseModel):
         return value
 
 
+class SourceConfig(StrictBaseModel):
+    mode: Literal["aggregate"] = "aggregate"
+    url: str = "http://localhost:4000/feeds/all.atom"
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("source url must not be empty")
+        return value
+
+
 class ScheduleConfig(StrictBaseModel):
     daily_time: str = "21:30"
     timezone: str = "Asia/Shanghai"
@@ -45,7 +92,7 @@ class RSSConfig(StrictBaseModel):
     day_start: str = "00:00"
     request_timeout_seconds: int = 20
     user_agent: str = "GZHReader/0.2"
-    max_articles_per_feed: int = 20
+    daily_article_limit: Literal["all"] | int = 20
 
     @field_validator("day_start")
     @classmethod
@@ -53,12 +100,15 @@ class RSSConfig(StrictBaseModel):
         _validate_hhmm(value)
         return value
 
+    @field_validator("daily_article_limit", mode="before")
+    @classmethod
+    def _validate_daily_article_limit(cls, value: Any) -> Literal["all"] | int:
+        return normalize_daily_article_limit(value)
+
     @model_validator(mode="after")
     def _validate_model(self) -> "RSSConfig":
         if self.request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be positive")
-        if self.max_articles_per_feed <= 0:
-            raise ValueError("max_articles_per_feed must be positive")
         return self
 
 
@@ -126,6 +176,7 @@ class OutputConfig(StrictBaseModel):
 
 class AppConfig(StrictBaseModel):
     db_path: str = "./data/gzhreader.db"
+    source: SourceConfig = Field(default_factory=SourceConfig)
     feeds: list[FeedConfig] = Field(default_factory=list)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     rss: RSSConfig = Field(default_factory=RSSConfig)
@@ -141,22 +192,41 @@ class AppConfig(StrictBaseModel):
             return data
 
         migrated = dict(data)
+        legacy_feeds: list[dict[str, Any]] = []
 
-        if "feeds" not in migrated and isinstance(migrated.get("accounts"), list):
-            feeds: list[dict[str, Any]] = []
+        if isinstance(migrated.get("feeds"), list):
+            for item in migrated["feeds"]:
+                if isinstance(item, dict):
+                    legacy_feeds.append(dict(item))
+
+        if isinstance(migrated.get("accounts"), list):
             for item in migrated["accounts"]:
                 if not isinstance(item, dict):
                     continue
-                feeds.append(
+                legacy_feeds.append(
                     {
-                        "name": item.get("name") or item.get("wechat_id") or "Unnamed Feed",
+                        "name": item.get("name") or item.get("wechat_id") or "全部公众号",
                         "url": item.get("url", ""),
                         "active": item.get("active", True),
                         "order": item.get("order", 0),
                         "author": item.get("name") or item.get("wechat_id"),
                     }
                 )
-            migrated["feeds"] = feeds
+
+        if "source" not in migrated:
+            source_url = _pick_first_active_feed_url(legacy_feeds)
+            if not source_url:
+                wewe_rss = migrated.get("wewe_rss") if isinstance(migrated.get("wewe_rss"), dict) else {}
+                base_url = str(wewe_rss.get("base_url") or "http://localhost:4000")
+                source_url = build_default_source_url(base_url)
+            migrated["source"] = {"mode": "aggregate", "url": source_url}
+
+        rss = migrated.get("rss")
+        if isinstance(rss, dict) and "daily_article_limit" not in rss and "max_articles_per_feed" in rss:
+            updated_rss = dict(rss)
+            updated_rss["daily_article_limit"] = updated_rss.get("max_articles_per_feed")
+            updated_rss.pop("max_articles_per_feed", None)
+            migrated["rss"] = updated_rss
 
         output = migrated.get("output")
         if isinstance(output, dict) and "raw_archive_dir" not in output and "html_archive_dir" in output:
@@ -166,24 +236,35 @@ class AppConfig(StrictBaseModel):
 
         return migrated
 
+    @model_validator(mode="after")
+    def _normalize_source(self) -> "AppConfig":
+        if not self.source.url:
+            self.source.url = build_default_source_url(self.wewe_rss.base_url)
+        return self
+
+    def runtime_feed(self) -> FeedConfig:
+        return FeedConfig(
+            name="全部公众号",
+            url=self.source.url,
+            active=True,
+            order=1,
+        )
+
+    def runtime_feeds(self) -> list[FeedConfig]:
+        if not self.source.url:
+            return []
+        return [self.runtime_feed()]
+
 
 def default_config() -> AppConfig:
-    return AppConfig(
-        feeds=[
-            FeedConfig(
-                name="示例公众号",
-                url="http://localhost:4000/feeds/replace-me.atom",
-                active=True,
-                order=1,
-            )
-        ]
-    )
+    return AppConfig(source=SourceConfig(url=build_default_source_url("http://localhost:4000")))
 
 
 def ensure_config(path: Path) -> AppConfig:
     if not path.exists():
         raise FileNotFoundError(f"配置文件不存在: {path}")
-    return load_config(path)
+    config, _, _ = migrate_config_file(path)
+    return config
 
 
 def load_config(path: Path) -> AppConfig:
@@ -191,14 +272,61 @@ def load_config(path: Path) -> AppConfig:
     return AppConfig.model_validate(data)
 
 
+def migrate_config_file(path: Path) -> tuple[AppConfig, bool, Path | None]:
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    config = AppConfig.model_validate(data)
+
+    if not _needs_file_migration(data):
+        return config, False, None
+
+    backup_path = Path(f"{path}.bak")
+    shutil.copyfile(path, backup_path)
+    save_config(config, path)
+    return config, True, backup_path
+
+
 def save_config(config: AppConfig, path: Path) -> None:
-    payload = config.model_dump(mode="json")
+    payload = config.model_dump(mode="json", exclude={"feeds"})
     text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
     path.write_text(text, encoding="utf-8")
 
 
 def dump_json(config: AppConfig) -> str:
-    return json.dumps(config.model_dump(mode="json"), ensure_ascii=False, indent=2)
+    return json.dumps(config.model_dump(mode="json", exclude={"feeds"}), ensure_ascii=False, indent=2)
+
+
+def _needs_file_migration(data: Any) -> bool:
+    if not isinstance(data, dict):
+        return True
+    return any(
+        key in data
+        for key in (
+            "accounts",
+            "feeds",
+        )
+    ) or "source" not in data or _output_needs_migration(data) or _rss_needs_migration(data)
+
+
+def _output_needs_migration(data: dict[str, Any]) -> bool:
+    output = data.get("output")
+    return isinstance(output, dict) and "html_archive_dir" in output and "raw_archive_dir" not in output
+
+
+def _rss_needs_migration(data: dict[str, Any]) -> bool:
+    rss = data.get("rss")
+    return isinstance(rss, dict) and "max_articles_per_feed" in rss and "daily_article_limit" not in rss
+
+
+def _pick_first_active_feed_url(feeds: list[dict[str, Any]]) -> str:
+    for feed in feeds:
+        url = str(feed.get("url") or "").strip()
+        if url and bool(feed.get("active", True)):
+            return url
+    for feed in feeds:
+        url = str(feed.get("url") or "").strip()
+        if url:
+            return url
+    return ""
 
 
 def _validate_hhmm(value: str) -> None:

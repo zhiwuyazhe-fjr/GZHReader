@@ -1,209 +1,261 @@
-﻿# GZHReader
+# GZHReader
 
-GZHReader 是一个运行在 Windows 上的“微信公众号日报整理工具”。
+GZHReader 是一个面向 Windows 的“微信公众号日报整理工具”。
 
-它的目标很简单：
+它现在的正式产品形态是：**GUI 为主，CLI 为辅**。
 
-- 先把你关注的公众号文章变成标准 RSS/Atom 源
-- 再由 Python 程序自动抓取当天文章
-- 如果 RSS 里只有标题或摘要，就自动补抓正文
-- 最后调用大模型生成摘要，并输出为 Markdown 日报
+普通用户的推荐用法是：
 
-这个项目已经不再使用微信桌面版 UI 自动化。当前正式方案是：**`wewe-rss + MySQL + GZHReader`**。
+- 启动本地控制台 `gzhreader app`
+- 在网页里一键启动 `wewe-rss + MySQL`
+- 打开 `wewe-rss` 后台扫码登录并订阅公众号
+- 填写 LLM 配置
+- 点击“立即运行”生成 Markdown 日报
+
+整个项目已经**不再使用微信桌面版 UI 自动化**。当前唯一正式链路是：
+
+`公众号 -> wewe-rss 聚合源 all.atom -> GZHReader -> SQLite -> LLM -> Markdown 日报`
+
+默认输出只有一个核心产物：
+
+- `output/briefings/YYYY-MM-DD.md`
+
+默认**不会**再保存原始 HTML。
+
+---
+
+## 项目简介
+
+你可以把 GZHReader 理解成一条“自动整理资讯”的流水线：
+
+1. `wewe-rss` 把公众号文章变成标准 RSS / Atom
+2. GZHReader 从聚合源 `all.atom` 读取文章
+3. 如果 RSS 没带完整正文，GZHReader 自动补抓正文
+4. GZHReader 调用大模型生成摘要
+5. 最后输出成一份当天的 Markdown 日报
+
+这意味着：
+
+- **GZHReader 不直接登录微信后台抓文章**
+- **GZHReader 不要求你手工维护很多 feed 配置**
+- **GZHReader 默认只认一个聚合源：`all.atom`**
+
+日报里仍然会按 RSS 条目里的 `author` 自动分组，所以即使只有一个聚合源，最终输出依然会按公众号区分。
+
+---
 
 ## 一句话整体链路
 
-`微信公众号 -> wewe-rss -> RSS/Atom -> GZHReader -> SQLite -> 大模型总结 -> Markdown 日报`
+`公众号 -> wewe-rss -> all.atom -> GZHReader -> SQLite -> 大模型总结 -> Markdown 日报`
 
-你最终真正会用到、会打开的结果文件，是：
-
-- `output/briefings/YYYY-MM-DD.md`
+---
 
 ## 架构图
 
 ```mermaid
 flowchart LR
-    A[用户 / Windows 计划任务] --> B[gzhreader CLI]
-    B --> C[ReaderService]
+    U[用户 / Windows 计划任务] --> GUI[gzhreader app 本地 Web 控制台]
+    U --> CLI[gzhreader run / doctor / schedule 高级命令]
 
-    C --> D[RSSClient]
-    C --> E[ArticleContentFetcher]
-    C --> F[Storage SQLite]
-    C --> G[Summarizer]
-    C --> H[BriefingBuilder]
+    GUI --> S[ReaderService]
+    CLI --> S
 
-    D --> I[wewe-rss app 容器]
-    I --> J[MySQL 容器]
+    S --> R[RSSClient]
+    S --> F[ArticleContentFetcher]
+    S --> DB[Storage SQLite]
+    S --> LLM[Summarizer]
+    S --> B[BriefingBuilder]
 
-    E --> K[HTTP 抓取]
-    E --> L[本机浏览器 Edge/Chrome]
+    R --> WR[wewe-rss-app 容器]
+    WR --> MYSQL[mysql 容器]
 
-    H --> M[Markdown 日报]
-    F --> M
+    F --> HTTP[HTTP 正文抓取]
+    F --> BROWSER[本机 Edge / Chrome]
+
+    B --> MD[output/briefings/YYYY-MM-DD.md]
+    DB --> MD
 ```
+
+---
 
 ## 数据流图
 
 ```mermaid
 sequenceDiagram
-    participant U as 用户 / 定时任务
-    participant CLI as gzhreader
-    participant S as ReaderService
+    participant User as 用户
+    participant GUI as gzhreader app
+    participant Service as ReaderService
     participant RSS as RSSClient
     participant WR as wewe-rss
-    participant AF as ArticleContentFetcher
+    participant Fetcher as ArticleContentFetcher
     participant DB as SQLite
     participant LLM as 大模型接口
     participant MD as Markdown 日报
 
-    U->>CLI: 运行 gzhreader run today
-    CLI->>S: 加载配置并启动任务
-    S->>RSS: 读取 feeds
-    RSS->>WR: 请求 Atom / RSS 链接
-    WR-->>RSS: 返回文章列表
-    RSS-->>S: 返回 FeedArticle 列表
+    User->>GUI: 打开本地控制台
+    GUI->>WR: 启动 wewe-rss + MySQL
+    User->>WR: 扫码登录并订阅公众号
+    User->>GUI: 点击“立即运行”
+    GUI->>Service: 启动当日任务
+    Service->>RSS: 读取聚合源 source.url
+    RSS->>WR: 请求 all.atom
+    WR-->>RSS: 返回 RSS / Atom 条目
+    RSS-->>Service: 返回文章列表
 
     loop 每篇文章
-        S->>S: 判断是否属于目标日期
-        S->>S: 判断 RSS 是否缺正文
+        Service->>Service: 判断是否在目标日期窗口内
+        Service->>Service: 判断 RSS 正文是否足够
         alt RSS 正文足够
-            S->>DB: 直接去重入库
-        else 只有标题/摘要
-            S->>AF: 请求正文补抓
-            AF->>AF: 先走 HTTP 抓取
-            alt HTTP 成功拿到正文
-                AF-->>S: 返回正文
-            else HTTP 被拦截或正文不足
-                AF->>AF: 回退本机浏览器抓取
-                AF-->>S: 返回渲染后的正文
+            Service->>DB: 直接去重入库
+        else RSS 只有标题/摘要
+            Service->>Fetcher: 启动正文补抓
+            Fetcher->>Fetcher: 先走 HTTP
+            alt HTTP 成功
+                Fetcher-->>Service: 返回正文
+            else HTTP 失败或正文过短
+                Fetcher->>Fetcher: 回退本机浏览器抓取
+                Fetcher-->>Service: 返回浏览器渲染正文
             end
-            S->>DB: 去重 / 弱内容增强更新
+            Service->>DB: 去重 / 弱内容增强更新
         end
     end
 
-    S->>DB: 读取待总结文章
-    S->>LLM: 发送标题 + 正文
-    LLM-->>S: 返回摘要
-    S->>DB: 写回摘要结果
-    S->>MD: 生成 output/briefings/YYYY-MM-DD.md
+    Service->>DB: 读取待总结文章
+    Service->>LLM: 发送标题 + 正文
+    LLM-->>Service: 返回摘要
+    Service->>DB: 写回摘要
+    Service->>MD: 生成 Markdown 日报
 ```
 
-## 这套系统到底是怎么工作的
+---
 
-可以把它理解成 3 层：
+## 运行原理详解
 
-### 第 1 层：RSS 生产层
+### 1. 为什么现在只保留一个聚合源
 
-这层不是 GZHReader 自己完成的，而是靠 `wewe-rss`。
+旧版本里最容易让普通用户困惑的地方，就是 `feeds[]`。
 
-它负责：
+因为它会让人误以为：
 
-- 登录你的微信生态账号（通过 `wewe-rss` 后台扫码）
-- 订阅你指定的公众号
-- 把公众号文章整理成标准的 RSS / Atom 链接
+- 每个公众号都要手工写一条配置
+- `name` 一定要和公众号名严格对应
+- URL 不对就整个系统不能用
 
-也就是说，**GZHReader 本身不会直接去“登录微信抓公众号”**。它只消费已经准备好的 RSS。
+现在的思路更简单：
 
-### 第 2 层：日报生成层
+- 普通用户只需要一个源：`all.atom`
+- 这个源由 `wewe-rss` 统一输出
+- GZHReader 读取后，会根据文章里的 `author` 自动分组
 
-这层才是 GZHReader 自己负责的核心工作：
+所以你在配置里看到的重点不再是 `feeds[]`，而是：
 
-- 读取 `config.yaml`
-- 从 `wewe-rss` 提供的 RSS 链接中拉文章
-- 过滤出当天新文章
-- 判断 RSS 是否已经带完整正文
-- 如果正文不够，就自动补抓
-- 存进本地 SQLite 数据库
-- 调用大模型生成摘要
-- 输出 Markdown 日报
+```yaml
+source:
+  mode: aggregate
+  url: http://localhost:4000/feeds/all.atom
+```
 
-### 第 3 层：计划任务层
+如果你之前用的是旧版配置，程序会自动迁移，并备份为：
 
-如果你安装了 Windows 计划任务，它只是每天帮你自动执行一次：
+- `config.yaml.bak`
 
-- `gzhreader run today`
+### 2. 为什么会有两个容器
 
-所以计划任务不是另一个系统，它只是一个“自动按时点按钮的人”。
+这是整个项目里最容易让新手困惑的地方。
 
-## 为什么会有两个容器
+请直接这样理解：
 
-这是你最容易困惑的地方，我直接用最白话的方式解释。
+- `wewe-rss-app` = “把公众号变成 RSS 的应用”
+- `mysql` = “给 `wewe-rss-app` 保存数据的数据库”
 
-### 容器 1：`wewe-rss-app`
+它们不是两个不同项目，而是**同一个 RSS 服务的两个组成部分**。
 
-这个容器是真正提供 RSS 服务的应用。
-
-你可以把它理解成：
-
-- 一个小网站后台
-- 一个 RSS 生产器
-- 一个“把公众号内容整理成 Atom/RSS 链接”的程序
-
-它会对外提供类似这样的地址：
-
-- `http://localhost:4000/feeds/all.atom`
-
-GZHReader 读取的就是这个地址。
-
-### 容器 2：`mysql`
-
-这个容器不是多余的，它是给 `wewe-rss-app` 存数据用的数据库。
-
-你可以把它理解成：
-
-- `wewe-rss-app` 的记忆仓库
-- 用来保存订阅信息、后台数据、服务状态
-
-没有这个数据库，`wewe-rss-app` 就没法长期稳定保存自己的数据。
-
-### 关键结论
-
-对当前项目的默认方案来说：
-
-- **GZHReader 本身不是容器化运行的**，它是你在 Windows 本机直接执行的 Python 命令
-- **双容器只服务于 `wewe-rss`**
-- 但是因为当前项目把 `wewe-rss` 作为**必须组件**，所以别人使用你的项目时，也需要先把这两个容器跑起来
-
-换句话说：
-
-- 你的 Python 程序负责“整理日报”
-- 两个容器负责“生产公众号 RSS”
-
-## 还有一个 SQLite，它和 MySQL 是什么关系
-
-这里其实有 **两套数据库**，但职责完全不同：
-
-### `mysql` 容器里的数据库
-
-这是 `wewe-rss` 自己用的。
+#### `wewe-rss-app` 负责什么
 
 它负责：
 
-- 保存 `wewe-rss` 的后台数据
-- 维持 RSS 服务正常工作
+- 提供 `wewe-rss` Web 后台
+- 让你扫码登录
+- 让你订阅公众号
+- 把订阅结果输出成 RSS / Atom 地址
 
-### 项目里的 `data/gzhreader.db`
+#### `mysql` 负责什么
+
+它负责：
+
+- 给 `wewe-rss-app` 保存自己的数据
+- 记住你订阅了哪些公众号
+- 维持 RSS 服务的持久化状态
+
+### 3. 为什么还有一个 SQLite
+
+项目里实际上有两套数据库，但用途不同：
+
+#### `mysql` 容器
+
+这是 `wewe-rss` 自己的数据库。
+
+它只服务于：
+
+- 登录信息
+- 订阅信息
+- RSS 服务内部状态
+
+#### `data/gzhreader.db`
 
 这是 GZHReader 自己的本地 SQLite。
 
-它负责：
+它服务于：
 
-- 保存已抓取文章
-- 去重，避免重复总结
-- 保存运行记录
-- 保存摘要结果
-- 支持补跑时增强旧文章
+- 文章去重
+- 运行记录
+- 正文增强后的内容
+- 摘要结果
+- 日报缓存
 
-所以不要把它们混在一起：
+一句话总结：
 
-- `MySQL` = 给 `wewe-rss` 用
-- `SQLite` = 给 `GZHReader` 用
+- `mysql` 是给 `wewe-rss` 用的
+- `SQLite` 是给 `GZHReader` 用的
+
+### 4. 正文补抓是怎么做的
+
+RSS 并不总是带完整正文，所以 GZHReader 会按下面顺序补抓：
+
+1. **先看 RSS 有没有完整正文**
+2. 如果 RSS 只有标题或摘要：
+   - 先走 **HTTP 正文抓取**
+   - 失败后回退到 **本机 Edge / Chrome 浏览器抓取**
+3. 如果两种方式都失败：
+   - 仍继续运行
+   - 退回到“标题/摘要总结”
+
+所以单篇文章抓取失败，不会阻断整天任务。
+
+### 5. 为什么最终只看到 `.md`
+
+因为现在项目默认只保留最终结果：
+
+- `output/briefings/YYYY-MM-DD.md`
+
+原始 HTML 归档已经默认关闭：
+
+```yaml
+output:
+  save_raw_html: false
+```
+
+这意味着：
+
+- 默认不会再写 `output/raw/*.html`
+- 你平时只需要关心 Markdown 日报
+- 如果以后要做调试，再打开这个高级开关即可
+
+---
 
 ## 小白版上手步骤
 
-下面是你或者别人第一次使用这个项目的标准流程。
-
-### 1. 准备 Python 环境
+### 1. 安装 Python 依赖
 
 ```powershell
 python -m venv .venv
@@ -211,275 +263,298 @@ python -m venv .venv
 pip install -e .[dev]
 ```
 
-### 2. 初始化项目
+### 2. 直接启动 GUI
 
 ```powershell
-gzhreader init
+gzhreader app
 ```
 
-这一步会做几件事：
+第一次启动时，如果还没有 `config.yaml`，程序会自动创建默认配置。
 
-- 生成 `config.yaml`
-- 创建 Markdown 输出目录
-- 生成 `infra/wewe-rss` 下的 Docker Compose 文件
+本地控制台会固定启动在：
 
-### 3. 启动两个容器
+- `http://127.0.0.1:8765`
 
-```powershell
-gzhreader wewe-rss up
-```
+### 3. 在 GUI 里按顺序完成首屏引导
 
-启动后，你在 Docker Desktop 里会看到两项：
+推荐顺序：
 
-- `wewe-rss-app-1`
-- `wewe-rss-mysql-1`
+1. 检查 Docker Desktop
+2. 点击“启动 RSS 服务”
+3. 点击“打开 wewe-rss 登录页”
+4. 在 `wewe-rss` 后台扫码登录
+5. 在 `wewe-rss` 后台添加你想订阅的公众号
+6. 回到 GZHReader，填写 LLM 配置
+7. 设置计划任务
+8. 点击“立即运行”
 
-这就是默认方案里的“双容器”。
+### 4. 查看输出
 
-### 4. 登录 wewe-rss 后台
-
-浏览器打开：
-
-- `http://localhost:4000`
-
-然后：
-
-1. 输入授权码（默认 `123567`）
-2. 按页面提示扫码登录
-3. 添加你要订阅的公众号
-4. 复制生成的 Atom / RSS 链接
-
-### 5. 把 RSS 链接写进 `config.yaml`
-
-你要在 `feeds` 里配置文章源，例如：
-
-```yaml
-feeds:
-  - name: 全部公众号
-    url: http://localhost:4000/feeds/all.atom
-    active: true
-    order: 1
-```
-
-### 6. 检查环境
-
-```powershell
-gzhreader doctor
-```
-
-这一步会检查：
-
-- 配置文件是否能读取
-- RSS 依赖是否正常
-- HTTP / 浏览器正文抓取能力是否可用
-- SQLite 是否能初始化
-- Docker 与 `wewe-rss` 是否正常
-- LLM 接口是否连通
-
-### 7. 运行一次日报生成
-
-```powershell
-gzhreader run today
-```
-
-或者跑某一天：
-
-```powershell
-gzhreader run date 2026-03-07
-```
-
-### 8. 查看最终结果
-
-你最终要看的文件是：
+生成成功后，结果会保存在：
 
 - `output/briefings/YYYY-MM-DD.md`
 
-例如：
+你也可以在 GUI 里直接点击最近生成的日报进行查看。
 
-- `output/briefings/2026-03-07.md`
+---
 
-## 正文抓取是怎么回事
+## 容器说明
 
-RSS 有时候只会给你：
+### 默认方案
 
-- 标题
-- 短摘要
-- 原文链接
+当前项目默认且推荐的 RSS 生产方案是：
 
-这时 GZHReader 会自动补抓正文，顺序固定为：
+- `wewe-rss + MySQL`
 
-1. 先走 HTTP 请求原文页
-2. 如果微信拦截、正文太短、或拿到的是验证码页
-3. 再回退到本机浏览器（优先 Edge，再回退 Chrome）
-4. 从浏览器渲染后的页面里提取正文
+也就是说，**对使用本项目的人来说，这两个容器是必须组件**。
 
-所以你日志里常见的情况是：
+你不需要自己理解 Docker Compose 细节，但你需要知道：
 
-- HTTP 请求成功，但拿到的是微信拦截页
-- 然后浏览器回退成功
-- 最终 `content_source = browser_dom`
+- 没有 `wewe-rss-app`，就没有 RSS
+- 没有 `mysql`，`wewe-rss-app` 就没法正常保存数据
 
-这说明：
+### 如果你在 Docker Desktop 里看到两个容器，不要慌
 
-- **不是 HTTP 真正抓到了原文**
-- 而是 **浏览器回退抓到了正文**
+这是正常现象。
+
+你可以把它想成：
+
+- 一个容器是“应用”
+- 一个容器是“应用的数据库”
+
+它们应该一起启动、一起停止。
+
+在 GZHReader GUI 中，你只需要按按钮：
+
+- 启动 RSS 服务
+- 停止 RSS 服务
+- 打开 `wewe-rss` 登录页
+- 重新检查状态
+
+普通用户不需要手敲容器命令。
+
+---
 
 ## 输出说明
 
-当前正式输出只有一种：
+### 默认输出
 
-- Markdown 日报：`output/briefings/YYYY-MM-DD.md`
+- 日报：`output/briefings/YYYY-MM-DD.md`
+- 本地业务数据库：`data/gzhreader.db`
 
-从这次版本开始，项目默认：
+### 默认不再输出
 
-- **不再把原始 HTML 额外保存为本地文件**
-- 即 `output.save_raw_html: false`
+- 原始 HTML 归档
 
-这样做的原因很简单：
-
-- 你真正需要的是摘要结果，而不是一堆 `.html`
-- HTML 文件体积大、可读性差、容易让新手困惑
-- 默认关闭后，项目产物会更干净
-
-如果以后你要调试抓取问题，仍然可以把配置打开：
+除非你在高级模式里手动打开：
 
 ```yaml
 output:
-  briefing_dir: ./output/briefings
-  raw_archive_dir: ./output/raw
   save_raw_html: true
-  log_level: INFO
 ```
 
-## 当前最常用命令
+---
+
+## 配置说明
+
+普通用户基本只需要理解下面这几块：
+
+```yaml
+wewe_rss:
+  base_url: http://localhost:4000
+
+source:
+  mode: aggregate
+  url: http://localhost:4000/feeds/all.atom
+
+llm:
+  base_url: https://api.openai.com/v1
+  api_key: "..."
+  model: gpt-4o-mini
+
+rss:
+  daily_article_limit: 20
+
+schedule:
+  daily_time: "21:30"
+
+output:
+  briefing_dir: ./output/briefings
+```
+
+### 关于 `source.url`
+
+普通用户不需要自己改它。
+
+默认就是：
+
+- `http://localhost:4000/feeds/all.atom`
+
+它表示“读取 `wewe-rss` 提供的全部公众号聚合源”。
+
+### 关于 `rss.daily_article_limit`
+
+这个名字的意思是：**GZHReader 每天最多处理多少篇文章**。
+
+它不是：
+
+- 你订阅了多少个公众号
+- `wewe-rss` 里最多保存多少篇文章
+- 公众号后台里会显示多少条历史内容
+
+它真正控制的是：
+
+- 在你运行当天日报时，GZHReader 最多拿多少篇“属于目标日期的文章”进入后续流程
+- 这个设置同时影响“立即运行”和“每日计划任务”
+
+当前 GUI 提供这些预设：
+
+- `当天全部`
+- `每天最多 20 篇`
+- `每天最多 30 篇`
+- `每天最多 40 篇`
+- `每天最多 50 篇`
+- `每天最多 100 篇`
+
+其中：
+
+- `当天全部` = 处理 **RSS 聚合源当前能看到的、属于目标日期的全部文章**
+- `20 / 30 / 40 / 50 / 100` = 限制当天最多处理对应数量的文章，用于控制耗时和大模型成本
+
+处理顺序也已经固定为：
+
+1. 先读取聚合源当前返回的文章
+2. 先筛出“目标日期”的文章
+3. 再应用 `daily_article_limit` 上限
+4. 最后才进入正文补抓、去重、总结、生成 Markdown
+
+### 关于旧版 `feeds[]`
+
+旧版里你可能看到过：
+
+```yaml
+feeds:
+  - name: 新智元
+    url: ...
+```
+
+这套结构现在已经降级为兼容迁移用途。GUI 和新文档都不再要求普通用户理解它。
+
+---
+
+## 高级命令行入口
+
+虽然现在是 GUI 优先，但 CLI 仍然保留给高级用户：
 
 ```powershell
-gzhreader init
+gzhreader app
 gzhreader doctor
 gzhreader run today
 gzhreader run date 2026-03-07
-gzhreader run today --feed 全部公众号
-
 gzhreader schedule install
 gzhreader schedule remove
-
 gzhreader wewe-rss up
 gzhreader wewe-rss down
 gzhreader wewe-rss logs
 ```
 
+说明：
+
+- `gzhreader app` 是主入口
+- `gzhreader run ...` 仍可用于计划任务和自动化
+- `--feed` 已进入废弃状态，因为当前版本固定使用聚合源
+
+---
+
 ## 常见问题
 
-### 1. 如果别人使用我的项目，也需要这两个容器吗？
+### 1. 为什么我的配置里没有公众号名字了？
+
+因为现在对普通用户只暴露一个聚合源 `all.atom`。
+
+真正的公众号分组来自 RSS 条目的 `author` 字段，而不是你手工写的配置名。
+
+### 2. 为什么明明只有一个 `source`，日报里还能区分不同公众号？
+
+因为 `all.atom` 里面每篇文章都带作者信息，GZHReader 会按作者自动分组。
+
+### 3. 为什么以前总看到 “20”，现在它到底限制的是什么？
+
+这里的 `20` 指的不是公众号数量，也不是 RSS 源永久只保留 20 篇。
+
+它表示的是：**GZHReader 每天最多处理 20 篇属于目标日期的文章**。
+
+也就是说，程序现在会：
+
+1. 先读取 RSS 聚合源当前返回的文章
+2. 先筛出你要生成日报那一天的文章
+3. 再按 `rss.daily_article_limit` 决定最多处理多少篇
+
+如果你选：
+
+- `当天全部`：尽量处理 RSS 聚合源当前能看到的、属于该日期的全部文章
+- `20 / 30 / 40 / 50 / 100`：只处理当天最多对应数量的文章
+
+数量越大：
+
+- 正文补抓次数越多
+- 整体运行时间越长
+- 大模型总结成本越高
+
+### 4. 为什么我最终只看到 `.md`，看不到 HTML？
+
+因为 HTML 归档默认关闭了，这是故意简化后的行为。
+
+### 5. 别人使用这个项目，也需要那两个容器吗？
 
 需要。
 
-因为当前项目定位是：
+因为你当前项目把 `wewe-rss` 作为内置、默认、必须的 RSS 生产方案，所以别人也要先把这套服务启动起来。
 
-- **内置 `wewe-rss` 作为公众号 RSS 生产方案**
+### 6. 如果我以前已经有旧版配置怎么办？
 
-所以别人要用你的项目，标准流程也是：
+程序会自动迁移：
 
-1. 先启动 `wewe-rss-app`
-2. 再让 `mysql` 作为它的数据库一起启动
-3. 登录 `wewe-rss`
-4. 获取 RSS / Atom 链接
-5. 再让 GZHReader 去消费这些链接
+- 旧文件会备份为 `config.yaml.bak`
+- 旧的 `rss.max_articles_per_feed` 会迁移成新的 `rss.daily_article_limit`
+- 新文件会切换到 `source` 结构
 
-### 2. 如果我看到两个容器，不要慌，分别是干什么的？
+### 7. 项目最终会不会提供安装包？
 
-记住一句话就够了：
+当前仓库仍以 Python 项目形式运行，但目标发布形态已经确定为：
 
-- `app` 负责干活
-- `mysql` 负责记账
+- Windows 安装程序 `.exe`
 
-也就是：
+计划方向是：
 
-- `wewe-rss-app` 负责提供 RSS 服务
-- `mysql` 负责保存它的数据
+- `PyInstaller one-dir`
+- `Inno Setup` 安装器
 
-### 3. GZHReader 自己是容器吗？
+---
 
-不是。
+## 当前默认目录结构
 
-GZHReader 是你在 Windows 上直接运行的 Python 程序。
+```text
+config.yaml
+data/
+  gzhreader.db
+infra/
+  wewe-rss/
+output/
+  briefings/
+    YYYY-MM-DD.md
+src/
+  gzhreader/
+```
 
-### 4. 为什么最终只看到 md，不再看到 html？
+---
 
-因为项目现在默认关闭 HTML 文件落盘。
+## 当前推荐使用方式
 
-你的最终结果应该是：
-
-- `output/briefings/YYYY-MM-DD.md`
-
-HTML 现在默认不是交付物，只是未来调试时可选打开的能力。
-
-### 5. 如果我只想每天自动生成一份日报，需要一直开着程序吗？
-
-不需要。
-
-你只要安装 Windows 计划任务：
+如果你是普通用户，请只记住这一条：
 
 ```powershell
-gzhreader schedule install
+gzhreader app
 ```
 
-之后每天到设定时间，它会自动执行一次：
-
-- `gzhreader run today`
-
-## 默认配置示例
-
-```yaml
-db_path: ./data/gzhreader.db
-feeds:
-  - name: 全部公众号
-    url: http://localhost:4000/feeds/all.atom
-    active: true
-    order: 1
-
-schedule:
-  daily_time: '21:30'
-  timezone: Asia/Shanghai
-
-rss:
-  timezone: Asia/Shanghai
-  day_start: '00:00'
-  request_timeout_seconds: 20
-  user_agent: GZHReader/0.2
-  max_articles_per_feed: 20
-
-wewe_rss:
-  enabled: true
-  base_url: http://localhost:4000
-  auth_code: '123567'
-  service_dir: ./infra/wewe-rss
-  compose_variant: mysql
-  port: 4000
-  server_origin_url: http://localhost:4000
-  image: cooderl/wewe-rss:latest
-
-article_fetch:
-  enabled: true
-  trigger: missing_rss_content
-  mode: hybrid
-  timeout_seconds: 20
-  browser_channel_order:
-    - msedge
-    - chrome
-  max_content_chars: 12000
-
-llm:
-  base_url: https://api.openai.com/v1
-  api_key: ''
-  model: gpt-4o-mini
-  timeout_seconds: 45
-  retries: 2
-  temperature: 0.2
-
-output:
-  briefing_dir: ./output/briefings
-  raw_archive_dir: ./output/raw
-  save_raw_html: false
-  log_level: INFO
-```
+然后在本地控制台里完成剩下所有操作。

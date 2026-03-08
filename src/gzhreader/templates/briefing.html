@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ briefing_date }} 日报</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    .container { max-width: 980px; margin: 0 auto; padding: 24px; }
+    .card {
+      background: #fff;
+      border: 1px solid #dbe5f0;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+    }
+    a { color: #2563eb; text-decoration: none; }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.7;
+      font-family: "Microsoft YaHei", sans-serif;
+      margin: 0;
+    }
+    .meta { color: #64748b; margin: 8px 0 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div><a href="/">← 返回控制台</a></div>
+      <h1>{{ briefing_date }} 日报</h1>
+      <div class="meta">文件路径：{{ briefing_path }}</div>
+      <pre>{{ content }}</pre>
+    </div>
+  </div>
+</body>
+</html>

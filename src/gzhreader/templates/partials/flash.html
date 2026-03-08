@@ -1,0 +1,5 @@
+{% if message %}
+<div class="flash {{ level }}">{{ message }}</div>
+{% else %}
+<div class="flash info">准备就绪。建议从第 1 步开始，遇到外部操作完成后点一次“刷新状态”。</div>
+{% endif %}

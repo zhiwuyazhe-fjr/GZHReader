@@ -1,0 +1,29 @@
+{% if docker_blocked %}
+  {% include "partials/docker_setup.html" %}
+{% else %}
+  <section class="panel">
+    <div class="between" style="margin-bottom: 12px;">
+      <div>
+        <h2 class="panel-title">先理解两件事</h2>
+        <div class="subtle">你看到的两个容器不是两个项目，而是同一个 RSS 服务的两个组成部分。普通用户只要按向导操作，不需要手动理解 Docker Compose。</div>
+      </div>
+      <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false">
+        <button class="ghost" type="submit" hx-disabled-elt="this">刷新状态 <span class="htmx-indicator">检测中...</span></button>
+      </form>
+    </div>
+    <div class="helper-grid">
+      <div class="helper-card">
+        <strong><code>wewe-rss-app</code></strong>
+        <div class="subtle">负责把公众号内容转成 RSS，后续 GZHReader 只读取这个聚合源。</div>
+      </div>
+      <div class="helper-card">
+        <strong><code>mysql</code></strong>
+        <div class="subtle">负责给 <code>wewe-rss-app</code> 保存登录态、订阅记录和服务数据，所以它不是多余容器。</div>
+      </div>
+    </div>
+  </section>
+
+  <div id="wizard-shell">{% include "partials/wizard.html" %}</div>
+  <div id="briefings-section">{% include "partials/briefings.html" %}</div>
+  <div id="advanced-shell">{% include "partials/advanced.html" %}</div>
+{% endif %}

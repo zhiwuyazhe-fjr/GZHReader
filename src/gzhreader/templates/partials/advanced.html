@@ -1,0 +1,16 @@
+<section class="panel advanced">
+  <details>
+    <summary>高级模式</summary>
+    <div class="subtle" style="margin: 12px 0;">普通用户一般不需要改这里。这里保留 YAML 编辑器和计划任务删除按钮，方便高级用户调试。</div>
+    <div class="meta" style="margin-bottom: 12px;">当前配置文件：{{ config_path }}</div>
+    <form method="post" action="/actions/save-advanced" hx-post="/actions/save-advanced" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false">
+      <textarea name="yaml_text">{{ yaml_text }}</textarea>
+      <div class="row" style="margin-top: 12px;">
+        <button type="submit" hx-disabled-elt="this">保存高级配置 <span class="htmx-indicator">保存中...</span></button>
+      </div>
+    </form>
+    <form method="post" action="/actions/remove-schedule" hx-post="/actions/remove-schedule" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" style="margin-top: 12px;">
+      <button class="light" type="submit" hx-disabled-elt="this">删除计划任务</button>
+    </form>
+  </details>
+</section>

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+﻿from datetime import date, datetime, timezone
 
 import httpx
 
@@ -19,6 +19,15 @@ ATOM = """<?xml version="1.0" encoding="utf-8"?>
 </feed>
 """
 
+ATOM_MANY = """<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>聚合源</title>
+  <entry><title>1</title><link href="https://example.com/1" /><updated>2026-03-07T01:00:00Z</updated></entry>
+  <entry><title>2</title><link href="https://example.com/2" /><updated>2026-03-07T02:00:00Z</updated></entry>
+  <entry><title>3</title><link href="https://example.com/3" /><updated>2026-03-07T03:00:00Z</updated></entry>
+</feed>
+"""
+
 
 def test_fetch_feed_parses_atom(monkeypatch) -> None:
     def fake_get(self, url, headers=None):
@@ -33,6 +42,18 @@ def test_fetch_feed_parses_atom(monkeypatch) -> None:
     assert items[0].feed_name == "新智元"
     assert items[0].title == "文章一"
     assert items[0].content_text == "这是第一篇正文"
+
+
+def test_fetch_feed_reads_all_source_entries_before_daily_limit(monkeypatch) -> None:
+    def fake_get(self, url, headers=None):
+        request = httpx.Request("GET", url, headers=headers)
+        return httpx.Response(200, text=ATOM_MANY, request=request)
+
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    client = RSSClient(RSSConfig(daily_article_limit=1))
+    items = client.fetch_feed(FeedConfig(name="聚合流", url="http://localhost/feed.atom"))
+
+    assert len(items) == 3
 
 
 def test_in_window_uses_local_timezone() -> None:

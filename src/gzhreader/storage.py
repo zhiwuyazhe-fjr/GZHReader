@@ -253,6 +253,19 @@ class Storage:
             )
         return True
 
+    def get_unsummarized_articles(self) -> list[StoredArticle]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, feed_name, feed_url, title, author, publish_time, url, full_content, raw_html,
+                       content_source, capture_status, summary, summary_status, summary_error, fingerprint, run_key
+                FROM articles
+                WHERE summary_status = 'pending'
+                ORDER BY publish_time ASC, id ASC
+                """
+            ).fetchall()
+        return [self._row_to_stored_article(row) for row in rows]
+
     def get_unsummarized_for_date(self, target_date: date) -> list[StoredArticle]:
         with self._connect() as conn:
             rows = conn.execute(
@@ -280,6 +293,35 @@ class Storage:
                 "UPDATE articles SET summary_status = 'failed', summary_error = ? WHERE id = ?",
                 (error, article_id),
             )
+
+    def get_all_article_views(self) -> list[ArticleView]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, feed_name, feed_url, title, author, publish_time, url, full_content,
+                       content_source, capture_status, summary, summary_status, summary_error
+                FROM articles
+                ORDER BY feed_name ASC, publish_time ASC, id ASC
+                """
+            ).fetchall()
+        return [
+            ArticleView(
+                id=row[0],
+                feed_name=row[1],
+                feed_url=row[2],
+                title=row[3],
+                author=row[4],
+                publish_time=datetime.fromisoformat(row[5]),
+                url=row[6],
+                full_content=row[7],
+                content_source=row[8],
+                capture_status=row[9],
+                summary=row[10],
+                summary_status=row[11],
+                summary_error=row[12],
+            )
+            for row in rows
+        ]
 
     def get_article_views_for_date(self, target_date: date) -> list[ArticleView]:
         with self._connect() as conn:

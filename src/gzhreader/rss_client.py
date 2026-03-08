@@ -26,23 +26,26 @@ class RSSClient:
         with httpx.Client(timeout=self.config.request_timeout_seconds, follow_redirects=True) as client:
             response = client.get(feed.url, headers=headers)
             response.raise_for_status()
+
         parsed = feedparser.parse(response.text)
         if getattr(parsed, "bozo", False) and not parsed.entries:
             raise RuntimeError(f"RSS 解析失败: {getattr(parsed, 'bozo_exception', 'unknown error')}")
 
         default_name = feed.name or parsed.feed.get("title") or "Unnamed Feed"
         articles: list[FeedArticle] = []
-        for entry in list(parsed.entries)[: self.config.max_articles_per_feed]:
+        for entry in list(parsed.entries):
             published_at = self._parse_entry_datetime(entry)
             content_html = self._pick_content_html(entry)
             summary_html = self._pick_summary_html(entry)
             content_text = self.html_to_text(content_html)
             summary_text = self.html_to_text(summary_html)
+
             link = str(entry.get("link", "")).strip()
             if not link and entry.get("links"):
                 links = entry.get("links")
                 if isinstance(links, list) and links:
                     link = str(links[0].get("href", "")).strip()
+
             author = str(entry.get("author", "")).strip() or (feed.author or default_name)
             logical_feed_name = author or default_name
             articles.append(
@@ -59,7 +62,8 @@ class RSSClient:
                     summary_text=summary_text,
                 )
             )
-        logger.info("RSS: fetched %s entries from %s", len(articles), default_name)
+
+        logger.info("RSS: source returned %s articles from %s", len(articles), default_name)
         return articles
 
     def feed_window(self, target_date: date) -> tuple[datetime, datetime]:
@@ -80,7 +84,7 @@ class RSSClient:
             entries = self.fetch_feed(feed)
         except Exception as exc:
             return False, f"读取失败: {exc}"
-        return True, f"可读取，最近返回 {len(entries)} 条"
+        return True, f"可读取，最近返回 {len(entries)} 条文章"
 
     @staticmethod
     def html_to_text(html: str) -> str:

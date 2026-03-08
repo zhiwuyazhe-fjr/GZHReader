@@ -1,4 +1,4 @@
-﻿db_path: ./data/gzhreader.db
+db_path: ./data/gzhreader.db
 source:
   mode: aggregate
   url: http://localhost:4000/feeds/all.atom
@@ -7,10 +7,10 @@ schedule:
   timezone: Asia/Shanghai
 rss:
   timezone: Asia/Shanghai
-  day_start: '00:00'
+  day_start: 00:00
   request_timeout_seconds: 20
   user_agent: GZHReader/0.2
-  daily_article_limit: 20
+  max_articles_per_feed: 20
 wewe_rss:
   enabled: true
   base_url: http://localhost:4000
@@ -26,13 +26,13 @@ article_fetch:
   mode: hybrid
   timeout_seconds: 20
   browser_channel_order:
-    - msedge
-    - chrome
+  - msedge
+  - chrome
   max_content_chars: 12000
 llm:
-  base_url: https://api.openai.com/v1
-  api_key: ''
-  model: gpt-4o-mini
+  base_url: https://coding.dashscope.aliyuncs.com/v1
+  api_key: sk-sp-5ecaf1553276477dbeee0a8a5fd72037
+  model: qwen3.5-plus
   timeout_seconds: 45
   retries: 2
   temperature: 0.2
@@ -41,4 +41,3 @@ output:
   raw_archive_dir: ./output/raw
   save_raw_html: false
   log_level: INFO
-

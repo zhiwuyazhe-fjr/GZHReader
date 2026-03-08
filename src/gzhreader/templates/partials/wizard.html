@@ -1,0 +1,212 @@
+<section class="panel">
+  <div class="between" style="margin-bottom: 12px;">
+    <div>
+      <h2 class="panel-title">分步向导</h2>
+      <div class="subtle">按顺序一步一步来就可以。当前步骤会高亮，后面的步骤会在前置条件满足后自动解锁。</div>
+    </div>
+  </div>
+
+  <div class="wizard">
+    {% for step in wizard_steps %}
+      <article class="step-card {{ 'done' if step.done else '' }} {{ 'current' if step.current else '' }} {{ 'locked' if step.locked else '' }}">
+        <div class="step-head">
+          <div class="step-no">{{ step.number }}</div>
+          <div>
+            <h3 class="step-title">{{ step.title }}</h3>
+            <div class="step-summary">{{ step.summary }}</div>
+          </div>
+          <div class="status-pill {{ 'done' if step.done else ('locked' if step.locked else '') }}">
+            {% if step.done %}已完成{% elif step.locked %}等待上一步{% else %}当前步骤{% endif %}
+          </div>
+        </div>
+
+        <div class="step-body">
+          <div class="detail-box">{{ step.detail }}</div>
+
+          {% if step.id == 'environment' %}
+            <div class="status-list">
+              {% for item in status.environment_items %}
+                <div class="status-row">
+                  <div>
+                    <strong>{{ item.label }}</strong>
+                    <div class="status-meta">{{ item.detail }}</div>
+                  </div>
+                  <span class="badge {{ 'ok' if item.ok else 'bad' }}">{{ '正常' if item.ok else '待处理' }}</span>
+                </div>
+              {% endfor %}
+            </div>
+            <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+              <fieldset {% if step.locked %}disabled{% endif %}>
+                <button type="submit" hx-disabled-elt="this">重新检查环境 <span class="htmx-indicator">检测中...</span></button>
+              </fieldset>
+            </form>
+
+          {% elif step.id == 'rss_service' %}
+            <div class="status-list">
+              {% for item in status.rss_service_items %}
+                <div class="status-row">
+                  <div>
+                    <strong>{{ item.label }}</strong>
+                    <div class="status-meta">{{ item.detail }}</div>
+                  </div>
+                  <span class="badge {{ 'ok' if item.ok else 'bad' }}">{{ '正常' if item.ok else '未就绪' }}</span>
+                </div>
+              {% endfor %}
+            </div>
+            <form method="post" action="/actions/start-rss" hx-post="/actions/start-rss" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+              <fieldset {% if step.locked %}disabled{% endif %}>
+                <button type="submit" hx-disabled-elt="this">{% if step.done %}重新启动 RSS 服务{% else %}启动 RSS 服务{% endif %} <span class="htmx-indicator">启动中...</span></button>
+              </fieldset>
+            </form>
+
+          {% elif step.id == 'subscription' %}
+            <form method="post" action="/actions/open-wewe-rss" hx-post="/actions/open-wewe-rss" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+              <fieldset {% if step.locked %}disabled{% endif %}>
+                <div class="field-note">订阅完成后，点击页面顶部或第 1 步里的“刷新状态”。</div>
+                <button type="submit" hx-disabled-elt="this">打开 wewe-rss 登录页 <span class="htmx-indicator">处理中...</span></button>
+              </fieldset>
+            </form>
+
+          {% elif step.id == 'llm' %}
+            <form method="post" action="/actions/save-llm" hx-post="/actions/save-llm" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+              <fieldset {% if step.locked %}disabled{% endif %}>
+                <div class="grid-2">
+                  <div class="field">
+                    <label>Base URL</label>
+                    <input name="base_url" value="{{ config.llm.base_url }}">
+                  </div>
+                  <div class="field">
+                    <label>Model</label>
+                    <input name="model" value="{{ config.llm.model }}">
+                  </div>
+                </div>
+                <div class="field">
+                  <label>API Key</label>
+                  <input name="api_key" value="{{ config.llm.api_key }}">
+                </div>
+                <div class="grid-2">
+                  <div class="field">
+                    <label>超时秒数</label>
+                    <input type="number" min="5" step="1" name="timeout_seconds" value="{{ config.llm.timeout_seconds }}">
+                  </div>
+                  <div class="field">
+                    <label>重试次数</label>
+                    <input type="number" min="0" step="1" name="retries" value="{{ config.llm.retries }}">
+                  </div>
+                </div>
+                <button type="submit" hx-disabled-elt="this">保存并测试 LLM <span class="htmx-indicator">测试中...</span></button>
+              </fieldset>
+            </form>
+
+          {% elif step.id == 'output_dir' %}
+            <div class="output-settings">
+              <div class="output-settings-copy">
+                <div class="output-settings-title">Markdown 保存目录</div>
+                <div class="subtle">生成的日报会按 <code>YYYY-MM-DD.md</code> 写入这个目录。修改后，立即运行和后续每日任务都会使用这里。</div>
+                <div class="meta">当前目录：{{ briefing_dir_display }}</div>
+              </div>
+              <div class="output-dir-actions">
+                <form method="post" action="/actions/save-output-dir" hx-post="/actions/save-output-dir" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="output-dir-form">
+                  <input name="briefing_dir" value="{{ config.output.briefing_dir }}" placeholder="例如：D:/GZHReader/briefings">
+                  <button type="submit" hx-disabled-elt="this">保存目录 <span class="htmx-indicator">保存中...</span></button>
+                </form>
+                <form method="post" action="/actions/pick-output-dir" hx-post="/actions/pick-output-dir" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false">
+                  <button class="light" type="submit" hx-disabled-elt="this">选择目录 <span class="htmx-indicator">打开中...</span></button>
+                </form>
+              </div>
+              <div class="field-note">点击“选择目录”后，程序会弹出本机的文件夹选择框；如果你更习惯手动输入路径，也可以直接在上面的输入框里修改。</div>
+            </div>
+
+          {% elif step.id == 'schedule' %}
+            <form method="post" action="/actions/install-schedule" hx-post="/actions/install-schedule" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+              <fieldset {% if step.locked %}disabled{% endif %}>
+                <div class="schedule-banner">
+                  <div>
+                    <div class="schedule-banner-title">按本机时间自动执行</div>
+                    <div class="subtle">先设好时间，再决定每天最多处理多少篇。这个设置同时影响立即运行和每日计划任务。</div>
+                  </div>
+                  <div class="schedule-banner-pill">当前时间 <strong>{{ '%02d' % schedule_hour }}:{{ '%02d' % schedule_minute }}</strong></div>
+                </div>
+
+                <div class="schedule-layout">
+                  <div class="schedule-grid">
+                    <section class="schedule-card">
+                      <div class="schedule-card-tag">文章数量</div>
+                      <div class="schedule-card-title">每天最多处理多少篇</div>
+                      <select name="daily_article_limit" id="daily-article-limit-select">
+                        {% for option in daily_article_limit_options %}
+                          <option value="{{ option.value }}" data-label="{{ option.label }}" {% if option.value == daily_article_limit %}selected{% endif %}>{{ option.label }}</option>
+                        {% endfor %}
+                      </select>
+                      <div class="field-note">“当天全部”表示尽量处理当天在 RSS 聚合源里能读到的全部文章。</div>
+                      <div class="field-note">20 / 30 / 40 / 50 / 100 用于限制当天最多处理的文章数量，数字越大，正文抓取和大模型总结耗时越长、成本也越高。</div>
+                    </section>
+
+                    <section class="schedule-card">
+                      <div class="schedule-card-tag">运行时间</div>
+                      <div class="schedule-card-title">Windows 计划任务会按本机时间触发</div>
+                      <div class="time-grid schedule-time-grid">
+                        <div class="field">
+                          <label>小时</label>
+                          <select name="run_hour" id="schedule-hour-select">
+                            {% for hour in range(0, 24) %}
+                              <option value="{{ hour }}" {% if hour == schedule_hour %}selected{% endif %}>{{ '%02d' % hour }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="time-sep">:</div>
+                        <div class="field">
+                          <label>分钟</label>
+                          <select name="run_minute" id="schedule-minute-select">
+                            {% for minute in range(0, 60) %}
+                              <option value="{{ minute }}" {% if minute == schedule_minute %}selected{% endif %}>{{ '%02d' % minute }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                      </div>
+                      <div class="field-note">不需要额外设置时区，系统会直接使用你这台电脑当前的本机时间。</div>
+                    </section>
+                  </div>
+
+                  <div class="schedule-preview">
+                    <div class="schedule-preview-item">
+                      <div class="schedule-preview-label">执行时间</div>
+                      <div class="schedule-preview-value" id="schedule-preview-time">每天 {{ '%02d' % schedule_hour }}:{{ '%02d' % schedule_minute }}</div>
+                    </div>
+                    <div class="schedule-preview-item">
+                      <div class="schedule-preview-label">文章范围</div>
+                      <div class="schedule-preview-value" id="schedule-preview-limit">{{ status.daily_article_limit_label }}</div>
+                    </div>
+                    <div class="schedule-preview-item">
+                      <div class="schedule-preview-label">生效范围</div>
+                      <div class="schedule-preview-value">立即运行 + 每日任务</div>
+                    </div>
+                  </div>
+                </div>
+                <button type="submit" hx-disabled-elt="this">保存并安装计划任务 <span class="htmx-indicator">安装中...</span></button>
+              </fieldset>
+            </form>
+
+          {% elif step.id == 'run_once' %}
+            <form method="post" action="/actions/run-now" hx-post="/actions/run-now" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+              <fieldset {% if step.locked %}disabled{% endif %}>
+                <div class="field" style="max-width: 240px;">
+                  <label>运行日期</label>
+                  <input type="date" name="target_date" value="{{ today }}">
+                </div>
+                <button type="submit" hx-disabled-elt="this">立即运行测试 <span class="htmx-indicator">运行中...</span></button>
+              </fieldset>
+            </form>
+
+          {% elif step.id == 'briefing' %}
+            {% if latest_briefing %}
+              <a class="button light" href="/briefings/{{ latest_briefing.date_text }}">查看最新日报</a>
+            {% else %}
+              <button type="button" disabled>等待上一步生成结果</button>
+            {% endif %}
+          {% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+</section>

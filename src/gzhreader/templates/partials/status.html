@@ -1,0 +1,58 @@
+<div class="grid">
+  <section class="card">
+    <div class="row" style="justify-content: space-between; margin-bottom: 10px;">
+      <h2 style="margin: 0;">环境状态</h2>
+      <button
+        class="light"
+        hx-get="/partials/status"
+        hx-target="#status-section"
+        hx-swap="innerHTML"
+        type="button"
+      >重新检查状态</button>
+    </div>
+    <div class="status-list">
+      {% for item in status.environment %}
+        <div class="status-item">
+          <div>
+            <strong>{{ item.label }}</strong>
+            <div class="meta">{{ item.detail }}</div>
+          </div>
+          <span class="badge {{ 'ok' if item.ok else 'bad' }}">{{ '正常' if item.ok else '异常' }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>RSS 服务状态</h2>
+    <p class="subtle">你现在看到的两个容器其实不是“两个项目”，而是一个服务的两个部分：<code>wewe-rss-app</code> 负责产出 RSS，<code>mysql</code> 负责保存它的数据。</p>
+    <div class="status-list" style="margin-bottom: 12px;">
+      {% for item in status.rss_service %}
+        <div class="status-item">
+          <div>
+            <strong>{{ item.label }}</strong>
+            <div class="meta">{{ item.detail }}</div>
+          </div>
+          <span class="badge {{ 'ok' if item.ok else 'bad' }}">{{ '正常' if item.ok else '异常' }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="row">
+      <form method="post" action="/actions/start-rss"><button type="submit">启动 RSS 服务</button></form>
+      <form method="post" action="/actions/stop-rss"><button class="secondary" type="submit">停止 RSS 服务</button></form>
+      <form method="post" action="/actions/open-wewe-rss"><button class="light" type="submit">打开 wewe-rss 登录页</button></form>
+    </div>
+  </section>
+
+  <section class="card" style="grid-column: 1 / -1;">
+    <h2>首次使用引导</h2>
+    <div class="wizard">
+      {% for step in wizard_steps %}
+        <div class="wizard-step {{ 'done' if step.done else '' }}">
+          <strong>{{ step.title }}</strong>
+          <div class="meta">{{ step.detail }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>

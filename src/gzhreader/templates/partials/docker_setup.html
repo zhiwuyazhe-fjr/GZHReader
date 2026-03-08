@@ -1,0 +1,40 @@
+<section class="panel docker-shell">
+  <div class="docker-hero">
+    <div class="docker-state">{{ docker_setup.status_badge }}</div>
+    <div>
+      <h2 class="panel-title">{{ docker_setup.status_title }}</h2>
+      <div class="subtle">{{ docker_setup.description }}</div>
+    </div>
+    <div class="detail-box">{{ docker_setup.detail }}</div>
+    <div class="docker-actions">
+      <a class="button warn" href="{{ docker_setup.download_url }}" target="_blank" rel="noreferrer">下载 Docker Desktop</a>
+      <a class="button light" href="{{ docker_setup.install_url }}" target="_blank" rel="noreferrer">查看安装说明</a>
+      <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false">
+        <button class="ghost" type="submit" hx-disabled-elt="this">重新检测 <span class="htmx-indicator">检测中...</span></button>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel" style="margin: 0; box-shadow: none; background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);">
+    <h3 class="panel-title" style="font-size: 20px; margin-bottom: 10px;">下一步怎么做</h3>
+    <div class="checklist">
+      <div class="check-item">
+        <strong>1. 安装 Docker Desktop</strong>
+        <div class="subtle">点击上面的官方下载按钮，按官方向导安装即可。</div>
+      </div>
+      <div class="check-item">
+        <strong>2. 启动 Docker Desktop</strong>
+        <div class="subtle">首次启动通常会稍慢，请等到界面显示 Engine running 或类似“已就绪”的状态。</div>
+      </div>
+      <div class="check-item">
+        <strong>3. 回到这里点“重新检测”</strong>
+        <div class="subtle">检测通过后，这里会自动恢复为正式向导，你就可以继续启动 <code>wewe-rss-app</code> 和 <code>mysql</code> 了。</div>
+      </div>
+      <div class="check-item">
+        <strong>为什么必须先装 Docker？</strong>
+        <div class="subtle">因为 GZHReader 依赖 Docker Desktop 来启动 <code>wewe-rss-app</code> 和 <code>mysql</code>。没有它，RSS 服务就没法在本机跑起来。</div>
+      </div>
+    </div>
+    <div class="detail-box" style="margin-top: 14px;">{{ docker_setup.next_step }}</div>
+  </div>
+</section>
