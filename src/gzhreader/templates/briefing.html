@@ -1,43 +1,158 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ briefing_date }} 日报</title>
+  <meta name="theme-color" content="#2563eb">
+  <link rel="icon" type="image/svg+xml" href="/static/brand/gzhreader-icon.svg">
   <style>
+    :root {
+      --bg: #eef4ff;
+      --panel: rgba(255,255,255,0.94);
+      --border: #dbe5f5;
+      --text: #10233f;
+      --muted: #5f7088;
+      --brand: #2563eb;
+      --brand-strong: #1d4ed8;
+      --shadow: 0 22px 48px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
-      background: #f8fafc;
-      color: #0f172a;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(37, 99, 235, 0.12), transparent 26%),
+        linear-gradient(180deg, #eef4ff 0%, #f7faff 100%);
     }
-    .container { max-width: 980px; margin: 0 auto; padding: 24px; }
+    a { color: inherit; text-decoration: none; }
+    .shell {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 32px 18px 48px;
+    }
+    .hero {
+      display: grid;
+      gap: 18px;
+      margin-bottom: 18px;
+      padding: 28px;
+      border-radius: 28px;
+      background: linear-gradient(135deg, #0b3aa4 0%, #2563eb 55%, #63a4ff 100%);
+      color: #fff;
+      box-shadow: 0 26px 56px rgba(37, 99, 235, 0.2);
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .logo {
+      width: 60px;
+      height: 60px;
+      padding: 10px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.18);
+      font-size: 13px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.2;
+    }
+    .hero-meta {
+      display: grid;
+      gap: 10px;
+    }
+    .hero-meta code {
+      display: block;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(8, 18, 36, 0.22);
+      color: #edf5ff;
+      overflow-wrap: anywhere;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 16px;
+      border-radius: 14px;
+      font-weight: 600;
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+    }
     .card {
-      background: #fff;
-      border: 1px solid #dbe5f0;
-      border-radius: 16px;
-      padding: 20px;
-      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 24px;
+      box-shadow: var(--shadow);
     }
-    a { color: #2563eb; text-decoration: none; }
-    pre {
+    .copy-meta {
+      color: var(--muted);
+      line-height: 1.8;
+      margin-bottom: 18px;
+    }
+    .markdown-body {
       white-space: pre-wrap;
       word-break: break-word;
-      line-height: 1.7;
-      font-family: "Microsoft YaHei", sans-serif;
+      line-height: 1.95;
+      font-size: 15px;
       margin: 0;
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
     }
-    .meta { color: #64748b; margin: 8px 0 16px; }
+    @media (max-width: 720px) {
+      .shell { padding: 18px 14px 36px; }
+      .hero { padding: 22px; border-radius: 24px; }
+      h1 { font-size: 28px; }
+      .toolbar { align-items: flex-start; }
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="card">
-      <div><a href="/">← 返回控制台</a></div>
-      <h1>{{ briefing_date }} 日报</h1>
-      <div class="meta">文件路径：{{ briefing_path }}</div>
-      <pre>{{ content }}</pre>
-    </div>
+  <div class="shell">
+    <section class="hero">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <img class="logo" src="/static/brand/gzhreader-icon.svg" alt="GZHReader">
+          <div>
+            <div class="eyebrow">Markdown 日报预览</div>
+            <h1>{{ briefing_date }} 日报</h1>
+          </div>
+        </div>
+        <a class="button" href="/">返回控制台</a>
+      </div>
+      <div class="hero-meta">
+        <div>当前页面展示的是已经生成好的 Markdown 内容预览。</div>
+        <code>{{ briefing_path }}</code>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="copy-meta">如果你想改保存位置或重新生成，可以回到控制台继续操作。</div>
+      <pre class="markdown-body">{{ content }}</pre>
+    </section>
   </div>
 </body>
 </html>

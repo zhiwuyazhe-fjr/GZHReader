@@ -1,0 +1,45 @@
+﻿<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="140" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#25B567"/>
+      <stop offset="0.55" stop-color="#159B54"/>
+      <stop offset="1" stop-color="#0F7C42"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(274 182) rotate(44.5) scale(420 320)">
+      <stop stop-color="#6EE7A6" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#6EE7A6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="120" y="170" width="784" height="672" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#0E5B32" flood-opacity="0.22"/>
+    </filter>
+    <filter id="cardShadow" x="8" y="8" width="1008" height="1008" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="22" flood-color="#0E5B32" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#cardShadow)">
+    <rect x="48" y="48" width="928" height="928" rx="164" fill="url(#bg)"/>
+    <rect x="60" y="60" width="904" height="904" rx="152" stroke="rgba(255,255,255,0.14)" stroke-width="6"/>
+    <rect x="48" y="48" width="928" height="928" rx="164" fill="url(#glow)"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M230 332V614C230 635.539 247.461 653 269 653H442" stroke="white" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M794 332V614C794 635.539 776.539 653 755 653H582" stroke="white" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <path d="M488 664C436 620 380 598 322 594V254C388 258 441 282 488 326V664Z" fill="white"/>
+    <path d="M536 664C588 620 644 598 702 594V254C636 258 583 282 536 326V664Z" fill="white"/>
+
+    <path d="M356 246H430V342L393 308L356 342V246Z" fill="#159B54"/>
+
+    <path d="M512 332V664" stroke="white" stroke-width="22" stroke-linecap="round"/>
+
+    <path d="M592 352C630 337 670 331 713 332" stroke="#159B54" stroke-width="22" stroke-linecap="round"/>
+    <path d="M588 424C628 407 669 401 713 402" stroke="#159B54" stroke-width="22" stroke-linecap="round"/>
+    <path d="M584 496C624 479 665 473 707 474" stroke="#159B54" stroke-width="22" stroke-linecap="round"/>
+    <path d="M588 566C618 551 649 542 680 536" stroke="#159B54" stroke-width="22" stroke-linecap="round"/>
+
+    <path d="M332 590C392 594 445 616 493 652" stroke="#EAFBF2" stroke-width="10" stroke-linecap="round" opacity="0.88"/>
+    <path d="M692 590C632 594 579 616 531 652" stroke="#EAFBF2" stroke-width="10" stroke-linecap="round" opacity="0.88"/>
+  </g>
+</svg>

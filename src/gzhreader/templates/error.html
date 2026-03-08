@@ -1,0 +1,135 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ error_title }}</title>
+  <meta name="theme-color" content="#2563eb">
+  <link rel="icon" type="image/svg+xml" href="/static/brand/gzhreader-icon.svg">
+  <style>
+    :root {
+      --text: #10233f;
+      --muted: #5f7088;
+      --panel: rgba(255,255,255,0.95);
+      --border: #dbe5f5;
+      --shadow: 0 24px 48px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 26%),
+        linear-gradient(180deg, #eef4ff 0%, #f7faff 100%);
+    }
+    .shell {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 18px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+    .hero {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .logo {
+      width: 68px;
+      height: 68px;
+      padding: 12px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+      box-shadow: 0 18px 32px rgba(37, 99, 235, 0.16);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: #eef4ff;
+      color: #1d4ed8;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      line-height: 1.2;
+    }
+    p {
+      margin: 0;
+      line-height: 1.85;
+      color: var(--muted);
+    }
+    .meta {
+      margin-top: 18px;
+      display: grid;
+      gap: 12px;
+    }
+    .meta-item {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      color: #35537a;
+      overflow-wrap: anywhere;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 22px;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 16px;
+      border-radius: 14px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .button.primary {
+      background: linear-gradient(135deg, #1d4ed8, #2563eb);
+      color: #fff;
+    }
+    .button.secondary {
+      background: #eef4ff;
+      color: #173b70;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="card">
+      <div class="hero">
+        <img class="logo" src="/static/brand/gzhreader-icon.svg" alt="GZHReader">
+        <div>
+          <div class="eyebrow">页面遇到错误</div>
+          <h1>{{ error_title }}</h1>
+          <p>{{ error_description }}</p>
+        </div>
+      </div>
+      <div class="meta">
+        <div class="meta-item">当前页面：{{ request_path }}</div>
+        <div class="meta-item">日志文件：{{ log_path }}</div>
+      </div>
+      <div class="actions">
+        <a class="button primary" href="/">返回首页</a>
+        <a class="button secondary" href="javascript:window.location.reload()">重新加载</a>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

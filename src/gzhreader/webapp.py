@@ -3,13 +3,15 @@
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+import logging
 import re
 from urllib.parse import urlencode
 import webbrowser
+from html import escape
 
 import yaml
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -26,14 +28,38 @@ from .config import (
 from .embedded_assets import HTMX_MIN_JS
 from .logging_utils import configure_logging
 from .rss_client import RSSClient
-from .runtime_paths import resolve_config_path
+from .runtime_paths import get_resource_root, get_runtime_paths, resolve_config_path
 from .scheduler import get_schedule_status, install_schedule, remove_schedule
 from .service import ReaderService
 from .storage import Storage
 from .summarizer import OpenAICompatibleSummarizer
 from .wewe_rss import WeWeRSSManager
 
-TEMPLATES = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
+LOGGER = logging.getLogger(__name__)
+
+def _resolve_resource_dir(kind: str) -> Path:
+    resource_root = get_resource_root()
+    candidates = [
+        resource_root / "gzhreader" / kind,
+        resource_root / "src" / "gzhreader" / kind,
+        Path(__file__).with_name(kind),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _get_template_dir() -> Path:
+    return _resolve_resource_dir("templates")
+
+
+def _get_static_dir() -> Path:
+    return _resolve_resource_dir("static")
+
+
+def _create_templates() -> Jinja2Templates:
+    return Jinja2Templates(directory=str(_get_template_dir()))
 DOCKER_DOWNLOAD_URL = "https://www.docker.com/products/docker-desktop/"
 DOCKER_INSTALL_URL = "https://docs.docker.com/desktop/setup/install/windows-install/"
 BRIEFING_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:_\d+)?\.md$")
@@ -387,8 +413,23 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
     resolved_backend = backend or DashboardBackend(resolve_config_path(config_path))
     web = FastAPI(title="GZHReader GUI")
     web.state.backend = resolved_backend
-    static_dir = Path(__file__).with_name("static")
+    templates = _create_templates()
+    web.state.templates = templates
+    static_dir = _get_static_dir()
     web.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @web.exception_handler(Exception)
+    async def unhandled_error(request: Request, exc: Exception):
+        LOGGER.exception("Unhandled GUI exception", exc_info=exc)
+        return _render_error_response(
+            request,
+            title="页面暂时打不开",
+            description=(
+                "GZHReader 刚刚在加载这个页面时遇到了问题。你可以先返回首页再试一次；"
+                "如果问题持续存在，请把日志文件发给我。"
+            ),
+            status_code=500,
+        )
 
     @web.get("/healthz")
     def healthz() -> JSONResponse:
@@ -396,7 +437,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
 
     @web.get("/favicon.ico")
     def favicon() -> Response:
-        return Response(status_code=204)
+        return FileResponse(static_dir / "brand" / "gzhreader-icon.svg", media_type="image/svg+xml")
 
     @web.get("/assets/htmx.min.js")
     def htmx_asset() -> Response:
@@ -405,36 +446,36 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
     @web.get("/", response_class=HTMLResponse)
     def dashboard(request: Request, message: str = "", level: str = "info"):
         context = request.app.state.backend.build_dashboard_context(message=message, level=level)
-        return TEMPLATES.TemplateResponse(request, "dashboard.html", context)
+        return templates.TemplateResponse(request, "dashboard.html", context)
 
     @web.get("/partials/flash", response_class=HTMLResponse)
     def flash_partial(request: Request, message: str = "", level: str = "info"):
-        return TEMPLATES.TemplateResponse(request, "partials/flash.html", {"message": message, "level": level})
+        return templates.TemplateResponse(request, "partials/flash.html", {"message": message, "level": level})
 
     @web.get("/partials/wizard", response_class=HTMLResponse)
     def wizard_partial(request: Request):
         context = request.app.state.backend.build_dashboard_context()
-        return TEMPLATES.TemplateResponse(request, "partials/wizard.html", context)
+        return templates.TemplateResponse(request, "partials/wizard.html", context)
 
     @web.get("/partials/docker-setup", response_class=HTMLResponse)
     def docker_setup_partial(request: Request):
         context = request.app.state.backend.build_dashboard_context()
-        return TEMPLATES.TemplateResponse(request, "partials/docker_setup.html", context)
+        return templates.TemplateResponse(request, "partials/docker_setup.html", context)
 
     @web.get("/partials/main-content", response_class=HTMLResponse)
     def main_content_partial(request: Request):
         context = request.app.state.backend.build_dashboard_context()
-        return TEMPLATES.TemplateResponse(request, "partials/main_content.html", context)
+        return templates.TemplateResponse(request, "partials/main_content.html", context)
 
     @web.get("/partials/briefings", response_class=HTMLResponse)
     def briefings_partial(request: Request):
         context = request.app.state.backend.build_dashboard_context()
-        return TEMPLATES.TemplateResponse(request, "partials/briefings.html", context)
+        return templates.TemplateResponse(request, "partials/briefings.html", context)
 
     @web.get("/partials/advanced", response_class=HTMLResponse)
     def advanced_partial(request: Request):
         context = request.app.state.backend.build_dashboard_context()
-        return TEMPLATES.TemplateResponse(request, "partials/advanced.html", context)
+        return templates.TemplateResponse(request, "partials/advanced.html", context)
 
     @web.get("/actions/refresh")
     def refresh(request: Request):
@@ -594,7 +635,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
             file_path, content = request.app.state.backend.read_briefing(briefing_date)
         except Exception as exc:
             return _after_action(request, f"打开日报失败：{exc}", "error")
-        return TEMPLATES.TemplateResponse(
+        return templates.TemplateResponse(
             request,
             "briefing.html",
             {
@@ -607,10 +648,66 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
     return web
 
 
+def _render_error_response(request: Request, *, title: str, description: str, status_code: int = 500) -> HTMLResponse:
+    log_path = get_runtime_paths().logs_dir / "gzhreader.log"
+    context = {
+        "error_title": title,
+        "error_description": description,
+        "request_path": request.url.path,
+        "log_path": str(log_path),
+    }
+    templates = getattr(request.app.state, "templates", None)
+    if templates is not None:
+        try:
+            return templates.TemplateResponse(request, "error.html", context, status_code=status_code)
+        except Exception:
+            LOGGER.exception("Failed to render branded error page")
+
+    safe_title = escape(title)
+    safe_description = escape(description)
+    safe_request_path = escape(str(request.url.path))
+    safe_log_path = escape(str(log_path))
+    html = f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{safe_title}</title>
+  <style>
+    body {{ margin: 0; font-family: "Microsoft YaHei", "Segoe UI", sans-serif; background: linear-gradient(180deg, #eef4ff 0%, #f7faff 100%); color: #10233f; }}
+    .shell {{ max-width: 760px; margin: 0 auto; padding: 48px 20px; }}
+    .card {{ background: #fff; border: 1px solid #d9e3f2; border-radius: 28px; padding: 28px; box-shadow: 0 22px 48px rgba(15, 23, 42, 0.08); }}
+    h1 {{ margin: 0 0 12px; font-size: 30px; }}
+    p {{ line-height: 1.8; color: #51657f; }}
+    .meta {{ margin-top: 18px; padding: 14px 16px; border-radius: 18px; background: #f8fbff; border: 1px solid #dbeafe; color: #35537a; line-height: 1.8; overflow-wrap: anywhere; }}
+    .actions {{ display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }}
+    .button {{ display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 14px; text-decoration: none; font-weight: 600; }}
+    .button.primary {{ background: linear-gradient(135deg, #1d4ed8, #2563eb); color: #fff; }}
+    .button.secondary {{ background: #eef4ff; color: #173b70; }}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="card">
+      <h1>{safe_title}</h1>
+      <p>{safe_description}</p>
+      <div class="meta">当前页面：{safe_request_path}<br>日志文件：{safe_log_path}</div>
+      <div class="actions">
+        <a class="button primary" href="/">返回首页</a>
+        <a class="button secondary" href="javascript:window.location.reload()">重新加载</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+"""
+    return HTMLResponse(html, status_code=status_code)
+
+
 def _after_action(request: Request, message: str, level: str):
     if request.headers.get("HX-Request") == "true":
         context = request.app.state.backend.build_dashboard_context(message=message, level=level)
-        return TEMPLATES.TemplateResponse(request, "partials/action_updates.html", context)
+        return request.app.state.templates.TemplateResponse(request, "partials/action_updates.html", context)
     return _redirect("/", message, level)
 
 

@@ -7,6 +7,8 @@ from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 project_root = Path(SPEC).resolve().parents[2]
 src_root = project_root / "src"
 gzhreader_root = src_root / "gzhreader"
+assets_root = project_root / "packaging" / "assets"
+app_icon = assets_root / "gzhreader.ico"
 
 site_packages = next((Path(p) for p in sys.path if p and p.endswith("site-packages")), None)
 mypyc_binaries = []
@@ -56,6 +58,7 @@ console_exe = EXE(
     strip=False,
     upx=True,
     console=True,
+    icon=str(app_icon),
 )
 
 gui_analysis = Analysis(
@@ -82,6 +85,7 @@ gui_exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    icon=str(app_icon),
 )
 
 coll = COLLECT(

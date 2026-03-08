@@ -6,6 +6,27 @@
 
 $ErrorActionPreference = "Stop"
 
+function Stop-LocalBuildProcesses {
+    param([string]$TargetRoot)
+
+    Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+        $process = $_
+        try {
+            $processPath = $process.Path
+        } catch {
+            $processPath = $null
+        }
+
+        if (-not $processPath) {
+            return
+        }
+
+        if ($processPath.StartsWith($TargetRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Resolve-IsccPath {
     param([string]$PreferredPath = "")
 
@@ -90,6 +111,12 @@ $distDir = Join-Path $projectRoot 'dist'
 $releaseDir = Join-Path $projectRoot 'release'
 $specPath = Join-Path $projectRoot 'packaging\pyinstaller\GZHReader.spec'
 $issPath = Join-Path $projectRoot 'packaging\inno\GZHReader.iss'
+$iconPath = Join-Path $projectRoot 'packaging\assets\gzhreader.ico'
+$wizardSidebarPath = Join-Path $projectRoot 'packaging\assets\wizard-sidebar.bmp'
+$wizardSmallPath = Join-Path $projectRoot 'packaging\assets\wizard-small.bmp'
+
+Stop-LocalBuildProcesses -TargetRoot $distDir
+Start-Sleep -Milliseconds 500
 
 foreach ($dir in @($buildDir, $distDir, $releaseDir)) {
     if (Test-Path $dir) {
@@ -97,6 +124,16 @@ foreach ($dir in @($buildDir, $distDir, $releaseDir)) {
     }
 }
 New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+
+if (-not (Test-Path $iconPath)) {
+    throw 'Icon file is missing: packaging\assets\gzhreader.ico'
+}
+if (-not (Test-Path $wizardSidebarPath)) {
+    throw 'Wizard sidebar image is missing: packaging\assets\wizard-sidebar.bmp'
+}
+if (-not (Test-Path $wizardSmallPath)) {
+    throw 'Wizard small image is missing: packaging\assets\wizard-small.bmp'
+}
 
 & $PythonExe -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('PyInstaller') else 1)"
 if ($LASTEXITCODE -ne 0) {

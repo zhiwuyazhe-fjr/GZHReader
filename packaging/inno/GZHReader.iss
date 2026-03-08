@@ -1,6 +1,9 @@
 #define MyAppName "GZHReader"
 #define MyAppVersion "0.2.0"
-#define MyAppPublisher "OpenAI + User Project"
+#define MyAppPublisher "zhiwuyazhe_fjr"
+#define MyAppIcon "..\assets\gzhreader.ico"
+#define WizardSidebarImage "..\assets\wizard-sidebar.bmp"
+#define WizardSmallImage "..\assets\wizard-small.bmp"
 #ifndef SourceDir
   #define SourceDir "dist\GZHReader"
 #endif
@@ -21,6 +24,9 @@ OutputBaseFilename=GZHReader-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#MyAppIcon}
+WizardImageFile={#WizardSidebarImage}
+WizardSmallImageFile={#WizardSmallImage}
 UninstallDisplayIcon={app}\GZHReader.exe
 ArchitecturesInstallIn64BitMode=x64compatible
 

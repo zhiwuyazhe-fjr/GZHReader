@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 import threading
 import time
 import webbrowser
@@ -158,7 +159,18 @@ def run_gui_server(
     configure_logging(config_data.output.log_level)
     WeWeRSSManager(config_data.wewe_rss).ensure_scaffold(force=False)
 
-    base_url = f"http://{host}:{port}"
+    selected_port, launch_mode = _resolve_gui_port(host, port)
+    base_url = f"http://{host}:{selected_port}"
+
+    if launch_mode == "existing":
+        typer.echo(f"GZHReader GUI is already running: {base_url}")
+        if open_browser:
+            webbrowser.open(base_url)
+        return
+
+    if launch_mode == "fallback":
+        typer.echo(f"Port {port} is busy; GZHReader will use {selected_port} instead.")
+
     if open_browser:
         threading.Thread(
             target=_wait_for_health_and_open_browser,
@@ -171,10 +183,49 @@ def run_gui_server(
     uvicorn.run(
         create_web_app(config_path=config_path),
         host=host,
-        port=port,
+        port=selected_port,
         log_level=config_data.output.log_level.lower(),
         log_config=None,
     )
+
+
+def _can_bind_port(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def _is_existing_gzhreader_gui(base_url: str) -> bool:
+    try:
+        response = httpx.get(f"{base_url}/healthz", timeout=1.0)
+    except Exception:
+        return False
+    if response.status_code != 200:
+        return False
+    try:
+        data = response.json()
+    except Exception:
+        return False
+    return data == {"ok": True}
+
+
+def _resolve_gui_port(host: str, preferred_port: int) -> tuple[int, str]:
+    if _can_bind_port(host, preferred_port):
+        return preferred_port, "new"
+
+    preferred_base_url = f"http://{host}:{preferred_port}"
+    if _is_existing_gzhreader_gui(preferred_base_url):
+        return preferred_port, "existing"
+
+    for candidate in range(preferred_port + 1, preferred_port + 20):
+        if _can_bind_port(host, candidate):
+            return candidate, "fallback"
+
+    raise RuntimeError("No available GUI port was found between 8765 and 8784.")
 
 
 def _wait_for_health_and_open_browser(base_url: str, *, timeout_seconds: float, interval_seconds: float) -> bool:

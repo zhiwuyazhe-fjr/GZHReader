@@ -168,12 +168,14 @@ def test_healthz_returns_ok() -> None:
     assert response.json() == {"ok": True}
 
 
-def test_favicon_returns_204() -> None:
+def test_favicon_returns_svg_icon() -> None:
     client = TestClient(create_app(backend=FakeBackend()))
 
     response = client.get("/favicon.ico")
 
-    assert response.status_code == 204
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/svg+xml")
+    assert "<svg" in response.text
 
 
 def test_start_rss_action_returns_htmx_fragment() -> None:

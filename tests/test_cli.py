@@ -49,6 +49,7 @@ def test_run_gui_server_disables_uvicorn_default_log_config(monkeypatch, tmp_pat
 
     monkeypatch.setattr(cli, "WeWeRSSManager", DummyManager)
     monkeypatch.setattr(cli.typer, "echo", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "_resolve_gui_port", lambda host, port: (port, "new"))
 
     def fake_run(app, **kwargs):
         captured["app"] = app
@@ -62,3 +63,26 @@ def test_run_gui_server_disables_uvicorn_default_log_config(monkeypatch, tmp_pat
     assert captured["port"] == 8765
     assert captured["log_level"] == "info"
     assert captured["log_config"] is None
+
+
+
+def test_resolve_gui_port_returns_existing_when_healthz_matches(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "_can_bind_port", lambda host, port: False)
+    monkeypatch.setattr(cli, "_is_existing_gzhreader_gui", lambda base_url: True)
+
+    port, mode = cli._resolve_gui_port("127.0.0.1", 8765)
+
+    assert port == 8765
+    assert mode == "existing"
+
+
+
+def test_resolve_gui_port_falls_back_to_next_available_port(monkeypatch) -> None:
+    bindable_ports = {8767}
+    monkeypatch.setattr(cli, "_can_bind_port", lambda host, port: port in bindable_ports)
+    monkeypatch.setattr(cli, "_is_existing_gzhreader_gui", lambda base_url: False)
+
+    port, mode = cli._resolve_gui_port("127.0.0.1", 8765)
+
+    assert port == 8767
+    assert mode == "fallback"
