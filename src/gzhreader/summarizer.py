@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Literal
 
 import httpx
 
@@ -15,10 +16,22 @@ class SummarizeInput:
     author: str
 
 
+def resolve_api_key(config: LLMConfig) -> tuple[str, Literal["config", "env", "missing"]]:
+    configured_key = config.api_key.strip()
+    if configured_key:
+        return configured_key, "config"
+
+    env_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if env_key:
+        return env_key, "env"
+
+    return "", "missing"
+
+
 class OpenAICompatibleSummarizer:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
-        self.api_key = config.api_key or os.getenv("OPENAI_API_KEY", "")
+        self.api_key, self.api_key_source = resolve_api_key(config)
 
     def summarize(self, item: SummarizeInput) -> str:
         text = (item.content or "").strip() or item.title

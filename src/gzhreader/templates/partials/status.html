@@ -37,6 +37,15 @@
         </div>
       {% endfor %}
     </div>
+    <div class="detail-box" style="margin-bottom: 12px;">
+      <strong>AUTH_CODE</strong> 是进入本地 <code>wewe-rss</code> 后台的访问码，不是微信账号密码。<br>
+      <strong>MYSQL_ROOT_PASSWORD</strong> 和 <strong>MYSQL_PASSWORD</strong> 只在 <code>compose_variant = mysql</code> 时给本地 MySQL 容器使用，主要是让 <code>wewe-rss-app</code> 连库；普通用户通常不需要手动记住或使用它们。<br>
+      {% if config.wewe_rss.compose_variant == 'sqlite' %}
+        当前配置使用的是 <code>sqlite</code> 变体，因此不会启动 MySQL 容器。
+      {% else %}
+        当前配置使用的是 <code>mysql</code> 变体，因此会启动一个本地 MySQL 容器作为 <code>wewe-rss</code> 的数据库。
+      {% endif %}
+    </div>
     <div class="row">
       <form method="post" action="/actions/start-rss"><button type="submit">启动 RSS 服务</button></form>
       <form method="post" action="/actions/stop-rss"><button class="secondary" type="submit">停止 RSS 服务</button></form>

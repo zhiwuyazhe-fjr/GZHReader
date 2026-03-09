@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gzhreader"
-version = "0.2.0"
+dynamic = ["version"]
 description = "RSS-based WeChat official account daily briefing generator"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,6 +38,9 @@ gzhreader-gui = "gzhreader.gui_entry:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "gzhreader.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

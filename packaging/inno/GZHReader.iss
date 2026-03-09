@@ -1,5 +1,7 @@
 #define MyAppName "GZHReader"
-#define MyAppVersion "0.2.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.0.0-dev"
+#endif
 #define MyAppPublisher "zhiwuyazhe_fjr"
 #define MyAppIcon "..\assets\gzhreader.ico"
 #define WizardSidebarImage "..\assets\wizard-sidebar.bmp"

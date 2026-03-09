@@ -4,7 +4,15 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from gzhreader.config import AppConfig, OutputConfig, save_config
-from gzhreader.webapp import BriefingFile, DashboardBackend, create_app
+import gzhreader.webapp as webapp
+from gzhreader.webapp import (
+    LLM_API_KEY_PLACEHOLDER,
+    BriefingFile,
+    DashboardBackend,
+    _build_llm_status,
+    _build_redacted_yaml,
+    create_app,
+)
 
 
 class FakeBackend:
@@ -16,6 +24,8 @@ class FakeBackend:
         self.pick_output_dir_called = False
 
     def build_dashboard_context(self, message: str = "", level: str = "info") -> dict:
+        config = AppConfig()
+        config.llm.api_key = "sk-live-secret"
         briefing = BriefingFile(
             name="2026-03-07.md",
             date_text="2026-03-07",
@@ -32,7 +42,7 @@ class FakeBackend:
             "install_url": "https://docs.docker.com/desktop/setup/install/windows-install/",
         }
         return {
-            "config": AppConfig(),
+            "config": config,
             "config_path": "C:/demo/config.yaml",
             "message": message,
             "level": level,
@@ -40,8 +50,10 @@ class FakeBackend:
                 "docker_ok": self.docker_ready,
                 "docker_detail": docker_setup["detail"],
                 "environment_ready": self.docker_ready,
+                "environment": [{"label": "Docker Desktop", "ok": self.docker_ready, "detail": docker_setup["detail"]}],
                 "environment_items": [{"label": "Docker Desktop", "ok": self.docker_ready, "detail": docker_setup["detail"]}],
                 "rss_service_ready": self.docker_ready,
+                "rss_service": [{"label": "wewe-rss-app", "ok": self.docker_ready, "detail": "ok"}],
                 "rss_service_items": [{"label": "wewe-rss-app", "ok": self.docker_ready, "detail": "ok"}],
                 "source_ok": self.docker_ready,
                 "source_detail": "ok",
@@ -79,6 +91,9 @@ class FakeBackend:
             "briefing_dir_display": "C:/demo/output/briefings",
             "docker_blocked": not self.docker_ready,
             "docker_setup": docker_setup,
+            "llm_api_key_saved": True,
+            "llm_api_key_source": "config",
+            "llm_uses_env_api_key": False,
         }
 
     def is_docker_ready(self):
@@ -311,6 +326,65 @@ def test_embedded_htmx_asset_is_served() -> None:
 
     assert response.status_code == 200
     assert "htmx" in response.text
+
+
+def test_dashboard_hides_saved_api_key_and_renders_password_toggle() -> None:
+    client = TestClient(create_app(backend=FakeBackend()))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "sk-live-secret" not in response.text
+    assert 'type="password"' in response.text
+    assert 'data-toggle-password' in response.text
+
+
+def test_llm_status_uses_env_api_key_when_config_is_empty(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "env-secret")
+    config = AppConfig()
+    config.llm.api_key = ""
+
+    status = _build_llm_status(config)
+
+    assert status["configured"] is True
+    assert status["api_key_source"] == "env"
+    assert status["uses_env_api_key"] is True
+
+
+def test_save_llm_keeps_existing_api_key_when_blank(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config = AppConfig()
+    config.llm.api_key = "existing-secret"
+    save_config(config, config_path)
+    backend = DashboardBackend(config_path)
+
+    monkeypatch.setattr(webapp.OpenAICompatibleSummarizer, "check_connectivity", lambda self: (True, "ok"))
+
+    ok, _detail = backend.save_llm(
+        base_url="https://api.openai.com/v1",
+        api_key="",
+        model="gpt-4o-mini",
+        timeout_seconds=45,
+        retries=2,
+    )
+
+    assert ok is True
+    assert backend.load_config().llm.api_key == "existing-secret"
+
+
+def test_advanced_yaml_redacts_and_preserves_existing_api_key(tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config = AppConfig()
+    config.llm.api_key = "existing-secret"
+    save_config(config, config_path)
+    backend = DashboardBackend(config_path)
+
+    yaml_text = _build_redacted_yaml(config)
+    backend.save_advanced_yaml(yaml_text)
+
+    assert "existing-secret" not in yaml_text
+    assert LLM_API_KEY_PLACEHOLDER in yaml_text
+    assert backend.load_config().llm.api_key == "existing-secret"
 
 def test_briefings_are_sorted_by_mtime_and_filtered_to_generated_files(tmp_path) -> None:
     output_dir = tmp_path / "briefings"

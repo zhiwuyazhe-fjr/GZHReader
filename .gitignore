@@ -19,6 +19,7 @@ src/*.egg-info/
 # Local secrets/config
 config.yaml
 infra/wewe-rss/.env
+docs/GITHUB_PUBLISHING.md
 
 # Runtime data
 data/

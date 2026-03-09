@@ -181,6 +181,27 @@
     .field { display: grid; gap: 7px; }
     .field label { font-size: 14px; color: var(--muted); }
     .field-note { font-size: 12px; color: var(--muted); }
+    .password-input {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .password-toggle {
+      min-width: 44px;
+      min-height: 44px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      box-shadow: none;
+      padding: 0 12px;
+      font-size: 18px;
+    }
+    .password-toggle:hover {
+      transform: none;
+      background: #f8fbff;
+    }
     .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .flash {
@@ -811,14 +832,35 @@
         renderPreview();
       };
 
+      const bindPasswordToggles = (root = document) => {
+        const toggles = root.querySelectorAll('[data-toggle-password]');
+        for (const toggle of toggles) {
+          if (toggle.dataset.passwordBound === 'true') continue;
+          toggle.addEventListener('click', () => {
+            const targetId = toggle.dataset.target;
+            const input = targetId ? document.getElementById(targetId) : null;
+            if (!input) return;
+            const showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            toggle.setAttribute('aria-pressed', String(!showing));
+            toggle.textContent = showing ? '👁' : '🙈';
+            toggle.title = showing ? '显示 API Key' : '隐藏 API Key';
+          });
+          toggle.dataset.passwordBound = 'true';
+        }
+      };
+
       bindSchedulePreview();
+      bindPasswordToggles();
       document.body.addEventListener('htmx:afterSwap', (event) => {
         const target = event.detail?.target;
         if (target && (target.id === 'main-shell' || target.closest?.('#main-shell'))) {
           bindSchedulePreview(target);
+          bindPasswordToggles(target);
           return;
         }
         bindSchedulePreview();
+        bindPasswordToggles();
       });
     })();
   </script>

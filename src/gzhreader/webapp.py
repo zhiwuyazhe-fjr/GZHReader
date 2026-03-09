@@ -32,7 +32,7 @@ from .runtime_paths import get_resource_root, get_runtime_paths, resolve_config_
 from .scheduler import get_schedule_status, install_schedule, remove_schedule
 from .service import ReaderService
 from .storage import Storage
-from .summarizer import OpenAICompatibleSummarizer
+from .summarizer import OpenAICompatibleSummarizer, resolve_api_key
 from .wewe_rss import WeWeRSSManager
 
 LOGGER = logging.getLogger(__name__)
@@ -63,6 +63,38 @@ def _create_templates() -> Jinja2Templates:
 DOCKER_DOWNLOAD_URL = "https://www.docker.com/products/docker-desktop/"
 DOCKER_INSTALL_URL = "https://docs.docker.com/desktop/setup/install/windows-install/"
 BRIEFING_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:_\d+)?\.md$")
+LLM_API_KEY_PLACEHOLDER = "__GZHREADER_KEEP_EXISTING_API_KEY__"
+
+
+def _build_llm_status(config: AppConfig) -> dict[str, object]:
+    api_key, api_key_source = resolve_api_key(config.llm)
+    has_endpoint = bool(config.llm.base_url.strip() and config.llm.model.strip())
+    api_key_saved = bool(config.llm.api_key.strip())
+    configured = bool(has_endpoint and api_key)
+
+    if configured:
+        if api_key_source == "config":
+            detail = "已在本地配置中保存 base_url / model / api_key。保存时会自动测试连通性。"
+        else:
+            detail = "已检测到 OPENAI_API_KEY 环境变量。当前界面不会回显该密钥，但运行和连通性测试会继续使用它。"
+    else:
+        detail = "请先填写 base_url / model，并提供本地 api_key 或 OPENAI_API_KEY。"
+
+    return {
+        "configured": configured,
+        "detail": detail,
+        "api_key_source": api_key_source,
+        "api_key_saved": api_key_saved,
+        "uses_env_api_key": api_key_source == "env",
+    }
+
+
+def _build_redacted_yaml(config: AppConfig) -> str:
+    payload = config.model_dump(mode="json", exclude={"feeds"})
+    llm_payload = payload.get("llm")
+    if isinstance(llm_payload, dict) and llm_payload.get("api_key"):
+        llm_payload["api_key"] = LLM_API_KEY_PLACEHOLDER
+    return yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
 
 
 @dataclass(slots=True)
@@ -88,6 +120,7 @@ class DashboardBackend:
         briefings = self.list_briefings(config)
         latest_briefing = briefings[0] if briefings else None
         status = self.collect_status(config)
+        llm_status = _build_llm_status(config)
         wizard_steps = self.build_wizard_steps(config, status, latest_briefing)
         docker_setup = self.build_docker_setup(status)
         schedule_hour, schedule_minute = _split_daily_time(config.schedule.daily_time)
@@ -102,11 +135,7 @@ class DashboardBackend:
             "briefings": briefings,
             "latest_briefing": latest_briefing,
             "today": date.today().isoformat(),
-            "yaml_text": yaml.safe_dump(
-                config.model_dump(mode="json", exclude={"feeds"}),
-                allow_unicode=True,
-                sort_keys=False,
-            ),
+            "yaml_text": _build_redacted_yaml(config),
             "schedule_hour": schedule_hour,
             "schedule_minute": schedule_minute,
             "daily_article_limit": str(daily_article_limit),
@@ -114,6 +143,9 @@ class DashboardBackend:
             "briefing_dir_display": _display_path(config.output.briefing_dir),
             "docker_blocked": docker_setup["blocked"],
             "docker_setup": docker_setup,
+            "llm_api_key_saved": llm_status["api_key_saved"],
+            "llm_api_key_source": llm_status["api_key_source"],
+            "llm_uses_env_api_key": llm_status["uses_env_api_key"],
         }
 
     def collect_status(self, config: AppConfig) -> dict:
@@ -128,12 +160,9 @@ class DashboardBackend:
         schedule_ok, schedule_detail = get_schedule_status()
         source_ok, source_detail = self._check_source(config)
 
-        llm_configured = bool(config.llm.base_url and config.llm.model and config.llm.api_key)
-        llm_detail = (
-            "已填写 base_url / model / api_key。保存时会自动测试连通性。"
-            if llm_configured
-            else "请先填写大模型接口信息。"
-        )
+        llm_status = _build_llm_status(config)
+        llm_configured = bool(llm_status["configured"])
+        llm_detail = str(llm_status["detail"])
 
         environment_ready = runtime.docker_ok and http_ok and browser_ok
         rss_service_ready = runtime.app_ok and runtime.mysql_ok and runtime.web_ok
@@ -160,6 +189,16 @@ class DashboardBackend:
             "schedule_installed": schedule_ok,
             "schedule_detail": schedule_detail,
             "daily_article_limit_label": describe_daily_article_limit(config.rss.daily_article_limit),
+            "environment": [
+                {"label": "Docker Desktop", "ok": runtime.docker_ok, "detail": runtime.docker_detail},
+                {"label": "HTTP 正文抓取", "ok": http_ok, "detail": http_detail},
+                {"label": "浏览器正文抓取", "ok": browser_ok, "detail": browser_detail},
+            ],
+            "rss_service": [
+                {"label": "wewe-rss-app", "ok": runtime.app_ok, "detail": runtime.app_detail},
+                {"label": "mysql", "ok": runtime.mysql_ok, "detail": runtime.mysql_detail},
+                {"label": "wewe-rss Web 后台", "ok": runtime.web_ok, "detail": runtime.web_detail},
+            ],
         }
 
     def build_docker_setup(self, status: dict) -> dict:
@@ -317,7 +356,9 @@ class DashboardBackend:
     ) -> tuple[bool, str]:
         config = self.load_config()
         config.llm.base_url = base_url.strip()
-        config.llm.api_key = api_key.strip()
+        submitted_api_key = api_key.strip()
+        if submitted_api_key:
+            config.llm.api_key = submitted_api_key
         config.llm.model = model.strip()
         config.llm.timeout_seconds = timeout_seconds
         config.llm.retries = retries
@@ -392,6 +433,12 @@ class DashboardBackend:
 
     def save_advanced_yaml(self, yaml_text: str) -> str:
         parsed = yaml.safe_load(yaml_text) or {}
+        existing_config = self.load_config()
+        llm_payload = parsed.get("llm")
+        if isinstance(llm_payload, dict):
+            api_key = str(llm_payload.get("api_key") or "").strip()
+            if api_key in {"", LLM_API_KEY_PLACEHOLDER} and existing_config.llm.api_key.strip():
+                llm_payload["api_key"] = existing_config.llm.api_key
         config = AppConfig.model_validate(parsed)
         self.save_config(config)
         return "高级 YAML 配置已保存。"

@@ -2,6 +2,7 @@
   <details>
     <summary>高级模式</summary>
     <div class="subtle" style="margin: 12px 0;">普通用户一般不需要改这里。这里保留 YAML 编辑器和计划任务删除按钮，方便高级用户调试。</div>
+    <div class="field-note" style="margin-bottom: 12px;">为避免在页面源代码里泄露密钥，`llm.api_key` 会以占位符形式显示。保持占位符不变，或留空提交，都将保留当前本地已保存的 API Key。</div>
     <div class="meta" style="margin-bottom: 12px;">当前配置文件：{{ config_path }}</div>
     <form method="post" action="/actions/save-advanced" hx-post="/actions/save-advanced" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false">
       <textarea name="yaml_text">{{ yaml_text }}</textarea>

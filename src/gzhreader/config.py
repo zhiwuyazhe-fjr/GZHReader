@@ -8,6 +8,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from . import __version__
 from .runtime_paths import get_runtime_paths, is_frozen_app
 
 
@@ -21,6 +22,7 @@ LEGACY_DB_PATHS = ("./data/gzhreader.db", "data/gzhreader.db")
 LEGACY_BRIEFING_DIRS = ("./output/briefings", "output/briefings")
 LEGACY_RAW_ARCHIVE_DIRS = ("./output/raw", "output/raw")
 LEGACY_WEWE_RSS_DIRS = ("./infra/wewe-rss", "infra/wewe-rss")
+DEFAULT_RSS_USER_AGENT = f"GZHReader/{__version__}"
 
 
 def normalize_daily_article_limit(value: Any) -> Literal["all"] | int:
@@ -97,7 +99,7 @@ class RSSConfig(StrictBaseModel):
     timezone: str = "Asia/Shanghai"
     day_start: str = "00:00"
     request_timeout_seconds: int = 20
-    user_agent: str = "GZHReader/0.2"
+    user_agent: str = DEFAULT_RSS_USER_AGENT
     daily_article_limit: Literal["all"] | int = 20
 
     @field_validator("day_start")

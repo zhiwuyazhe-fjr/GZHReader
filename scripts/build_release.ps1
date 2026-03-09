@@ -114,6 +114,7 @@ $issPath = Join-Path $projectRoot 'packaging\inno\GZHReader.iss'
 $iconPath = Join-Path $projectRoot 'packaging\assets\gzhreader.ico'
 $wizardSidebarPath = Join-Path $projectRoot 'packaging\assets\wizard-sidebar.bmp'
 $wizardSmallPath = Join-Path $projectRoot 'packaging\assets\wizard-small.bmp'
+$appVersion = (& $PythonExe -c "from pathlib import Path; namespace = {}; exec(Path('src/gzhreader/__init__.py').read_text(encoding='utf-8'), namespace); print(namespace['__version__'])").Trim()
 
 Stop-LocalBuildProcesses -TargetRoot $distDir
 Start-Sleep -Milliseconds 500
@@ -176,7 +177,8 @@ if (-not $iscc) {
 
 Write-Host '开始生成安装包...'
 Write-Host "使用 Inno Setup：$iscc"
-& $iscc "/DSourceDir=$distAppDir" "/DReleaseDir=$releaseDir" $issPath
+Write-Host "应用版本：$appVersion"
+& $iscc "/DSourceDir=$distAppDir" "/DReleaseDir=$releaseDir" "/DMyAppVersion=$appVersion" $issPath
 if ($LASTEXITCODE -ne 0) {
     throw 'Inno Setup 构建失败。'
 }

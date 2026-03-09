@@ -82,7 +82,35 @@
                 </div>
                 <div class="field">
                   <label>API Key</label>
-                  <input name="api_key" value="{{ config.llm.api_key }}">
+                  <div class="password-input">
+                    <input
+                      id="llm-api-key-input"
+                      type="password"
+                      name="api_key"
+                      value=""
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="{% if llm_api_key_saved %}已在本地配置中保存；留空则保持不变{% elif llm_uses_env_api_key %}将继续使用 OPENAI_API_KEY；如需覆盖可在此输入{% else %}输入新的 API Key{% endif %}"
+                    >
+                    <button
+                      class="password-toggle"
+                      type="button"
+                      data-toggle-password
+                      data-target="llm-api-key-input"
+                      aria-label="显示或隐藏 API Key"
+                      aria-pressed="false"
+                      title="显示 API Key"
+                    >👁</button>
+                  </div>
+                  <div class="field-note">
+                    {% if llm_api_key_saved %}
+                      已在本地配置中保存 API Key；界面不会回显真实值。留空提交会保留当前值。
+                    {% elif llm_uses_env_api_key %}
+                      当前未在配置中保存 API Key，但检测到环境变量 <code>OPENAI_API_KEY</code>。留空提交会继续使用环境变量。
+                    {% else %}
+                      建议只在本机保存 API Key。这里默认不明文显示，点击小眼睛后才会切换成明文。
+                    {% endif %}
+                  </div>
                 </div>
                 <div class="grid-2">
                   <div class="field">

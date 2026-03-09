@@ -1,4 +1,5 @@
-﻿from gzhreader.config import AppConfig, ensure_config, load_config, save_config
+from gzhreader import __version__
+from gzhreader.config import AppConfig, ensure_config, load_config, save_config
 
 
 def test_legacy_accounts_migrate_to_source(tmp_path) -> None:
@@ -97,3 +98,7 @@ def test_save_and_reload_roundtrip(tmp_path) -> None:
     assert loaded.wewe_rss.compose_variant == "mysql"
     assert loaded.output.save_raw_html is False
     assert loaded.rss.daily_article_limit == 20
+
+
+def test_default_user_agent_follows_package_version() -> None:
+    assert AppConfig().rss.user_agent == f"GZHReader/{__version__}"
