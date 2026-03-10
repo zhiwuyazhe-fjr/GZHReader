@@ -1,5 +1,5 @@
-<div class="grid">
-  <section class="card">
+<div class="grid-dashboard">
+  <section class="status-card">
     <div class="row" style="justify-content: space-between; margin-bottom: 10px;">
       <h2 style="margin: 0;">环境状态</h2>
       <button
@@ -23,7 +23,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="status-card">
     <h2>RSS 服务状态</h2>
     <p class="subtle">你现在看到的两个容器其实不是“两个项目”，而是一个服务的两个部分：<code>wewe-rss-app</code> 负责产出 RSS，<code>mysql</code> 负责保存它的数据。</p>
     <div class="status-list" style="margin-bottom: 12px;">
@@ -53,7 +53,7 @@
     </div>
   </section>
 
-  <section class="card" style="grid-column: 1 / -1;">
+  <section class="status-card status-wide">
     <h2>首次使用引导</h2>
     <div class="wizard">
       {% for step in wizard_steps %}
