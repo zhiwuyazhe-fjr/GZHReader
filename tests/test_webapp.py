@@ -16,14 +16,20 @@ from gzhreader.webapp import (
 
 
 class FakeBackend:
-    def __init__(self, *, docker_ready: bool = True) -> None:
+    def __init__(self, *, docker_ready: bool = True, llm_save_result: tuple[bool, str] = (True, "saved")) -> None:
         self.docker_ready = docker_ready
+        self.llm_save_result = llm_save_result
         self.started = False
         self.saved_schedule_args: dict | None = None
         self.saved_output_dir: str | None = None
         self.pick_output_dir_called = False
 
-    def build_dashboard_context(self, message: str = "", level: str = "info") -> dict:
+    def build_dashboard_context(
+        self,
+        message: str = "",
+        level: str = "info",
+        action_result: dict | None = None,
+    ) -> dict:
         config = AppConfig()
         config.llm.api_key = "sk-live-secret"
         briefing = BriefingFile(
@@ -38,9 +44,33 @@ class FakeBackend:
             "description": "GZHReader 需要 Docker Desktop 来启动 wewe-rss-app 和 mysql。",
             "next_step": "请先安装 Docker Desktop。",
             "detail": "Docker 不可用：not found" if not self.docker_ready else "Docker version 28.0",
-            "download_url": "https://www.docker.com/products/docker-desktop/",
-            "install_url": "https://docs.docker.com/desktop/setup/install/windows-install/",
+            "download_url": "https://docs.docker.com/desktop/setup/install/windows-install/",
+            "install_url": "https://docs.docker.com/desktop/",
         }
+        wizard_steps = [
+            {"id": "environment", "number": 1, "title": "检查环境", "summary": "ok", "detail": "ok", "done": self.docker_ready, "locked": False, "current": not self.docker_ready},
+            {"id": "rss_service", "number": 2, "title": "启动 RSS 服务", "summary": "ok", "detail": "ok", "done": self.docker_ready, "locked": not self.docker_ready, "current": False},
+            {"id": "subscription", "number": 3, "title": "登录并订阅公众号", "summary": "ok", "detail": "ok", "done": self.docker_ready, "locked": not self.docker_ready, "current": False},
+            {"id": "llm", "number": 4, "title": "配置并测试 LLM", "summary": "ok", "detail": "ok", "done": self.docker_ready, "locked": not self.docker_ready, "current": False},
+            {"id": "output_dir", "number": 5, "title": "选择生成结果保存位置", "summary": "ok", "detail": "当前保存目录：C:/demo/output/briefings", "done": True, "locked": not self.docker_ready, "current": False},
+            {"id": "schedule", "number": 6, "title": "设置每日任务", "summary": "ok", "detail": "ok", "done": False, "locked": not self.docker_ready, "current": self.docker_ready},
+            {"id": "run_once", "number": 7, "title": "立即运行一次测试", "summary": "ok", "detail": "ok", "done": True, "locked": False, "current": False},
+            {"id": "briefing", "number": 8, "title": "查看生成结果", "summary": "ok", "detail": "ok", "done": True, "locked": False, "current": False},
+        ]
+        advanced_feedback = None
+        if action_result and action_result.get("scope") == "wizard":
+            wizard_steps = [
+                {
+                    **step,
+                    "action_feedback": action_result if step["id"] == action_result.get("step_id") else None,
+                }
+                for step in wizard_steps
+            ]
+        else:
+            wizard_steps = [{**step, "action_feedback": None} for step in wizard_steps]
+        if action_result and action_result.get("scope") == "advanced":
+            advanced_feedback = action_result
+
         return {
             "config": config,
             "config_path": "C:/demo/config.yaml",
@@ -63,16 +93,7 @@ class FakeBackend:
                 "schedule_detail": "未安装",
                 "daily_article_limit_label": "每天最多 20 篇",
             },
-            "wizard_steps": [
-                {"id": "environment", "number": 1, "title": "检查环境", "summary": "ok", "detail": "ok", "done": self.docker_ready, "locked": False, "current": not self.docker_ready},
-                {"id": "rss_service", "number": 2, "title": "启动 RSS 服务", "summary": "ok", "detail": "ok", "done": self.docker_ready, "locked": not self.docker_ready, "current": False},
-                {"id": "subscription", "number": 3, "title": "登录并订阅公众号", "summary": "ok", "detail": "ok", "done": self.docker_ready, "locked": not self.docker_ready, "current": False},
-                {"id": "llm", "number": 4, "title": "配置并测试 LLM", "summary": "ok", "detail": "ok", "done": self.docker_ready, "locked": not self.docker_ready, "current": False},
-                {"id": "output_dir", "number": 5, "title": "选择生成结果保存位置", "summary": "ok", "detail": "当前保存目录：C:/demo/output/briefings", "done": True, "locked": not self.docker_ready, "current": False},
-                {"id": "schedule", "number": 6, "title": "设置每日任务", "summary": "ok", "detail": "ok", "done": False, "locked": not self.docker_ready, "current": self.docker_ready},
-                {"id": "run_once", "number": 7, "title": "立即运行一次测试", "summary": "ok", "detail": "ok", "done": True, "locked": False, "current": False},
-                {"id": "briefing", "number": 8, "title": "查看生成结果", "summary": "ok", "detail": "ok", "done": True, "locked": False, "current": False},
-            ],
+            "wizard_steps": wizard_steps,
             "briefings": [briefing],
             "latest_briefing": briefing,
             "today": "2026-03-08",
@@ -94,6 +115,8 @@ class FakeBackend:
             "llm_api_key_saved": True,
             "llm_api_key_source": "config",
             "llm_uses_env_api_key": False,
+            "advanced_feedback": advanced_feedback,
+            "terminal_notice": "运行某些步骤时，程序可能会短暂打开终端或系统窗口。这是正常现象，不需要手动关闭。",
         }
 
     def is_docker_ready(self):
@@ -110,7 +133,7 @@ class FakeBackend:
         return "opened"
 
     def save_llm(self, **kwargs):
-        return True, "saved"
+        return self.llm_save_result
 
     def save_schedule(self, **kwargs):
         self.saved_schedule_args = kwargs
@@ -306,8 +329,54 @@ def test_docker_setup_partial_contains_official_links() -> None:
     response = client.get("/partials/docker-setup")
 
     assert response.status_code == 200
-    assert "docker.com/products/docker-desktop" in response.text
-    assert "docs.docker.com/desktop/setup/install/windows-install" in response.text
+    assert 'href="https://docs.docker.com/desktop/setup/install/windows-install/"' in response.text
+    assert 'href="https://docs.docker.com/desktop/"' in response.text
+    assert response.text.count('target="_blank"') >= 2
+
+
+def test_dashboard_mentions_terminal_window_notice() -> None:
+    client = TestClient(create_app(backend=FakeBackend()))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "程序可能会短暂打开终端或系统窗口" in response.text
+
+
+def test_save_llm_failure_renders_step_feedback_near_llm_module() -> None:
+    backend = FakeBackend(llm_save_result=(False, "LLM 配置已保存，但测试失败：network timeout"))
+    client = TestClient(create_app(backend=backend))
+
+    response = client.post(
+        "/actions/save-llm",
+        data={
+            "base_url": "https://example.com/v1",
+            "api_key": "test-key",
+            "model": "gpt-4.1-mini",
+            "timeout_seconds": "30",
+            "retries": "2",
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.status_code == 200
+    assert "LLM 配置已保存，但测试失败：network timeout" in response.text
+    assert 'data-step-feedback="llm"' in response.text
+
+
+def test_save_advanced_renders_visible_local_feedback() -> None:
+    backend = FakeBackend()
+    client = TestClient(create_app(backend=backend))
+
+    response = client.post(
+        "/actions/save-advanced",
+        data={"yaml_text": "source:\n  mode: aggregate\n"},
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.status_code == 200
+    assert 'data-step-feedback="advanced"' in response.text
+    assert "<details open>" in response.text
 
 
 def test_briefing_page_renders_markdown_text() -> None:

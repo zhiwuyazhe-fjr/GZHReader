@@ -1,40 +1,69 @@
 <section class="panel docker-shell">
-  <div class="docker-hero">
-    <div class="docker-state">{{ docker_setup.status_badge }}</div>
-    <div>
-      <h2 class="panel-title">{{ docker_setup.status_title }}</h2>
-      <div class="subtle">{{ docker_setup.description }}</div>
+  <div class="docker-showcase">
+    <div class="docker-showcase-card">
+      <div class="docker-state">{{ docker_setup.status_badge }}</div>
+      <div>
+        <h2 class="panel-title">{{ docker_setup.status_title }}</h2>
+        <div class="subtle">{{ docker_setup.description }}</div>
+      </div>
+      <div class="detail-box">{{ docker_setup.detail }}</div>
+      <div class="docker-actions">
+        <a class="button warn" href="{{ docker_setup.download_url }}" target="_blank" rel="noreferrer">下载 Docker Desktop</a>
+        <a class="button light" href="{{ docker_setup.install_url }}" target="_blank" rel="noreferrer">查看安装说明</a>
+        <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
+          <button class="ghost" type="submit" hx-disabled-elt="this">重新检测 <span class="htmx-indicator">检测中...</span></button>
+        </form>
+      </div>
+      <div class="docker-footnote">上面两个链接都会在新页面打开。先按官方文档完成安装，再回到这里继续。</div>
     </div>
-    <div class="detail-box">{{ docker_setup.detail }}</div>
-    <div class="docker-actions">
-      <a class="button warn" href="{{ docker_setup.download_url }}" target="_blank" rel="noreferrer">下载 Docker Desktop</a>
-      <a class="button light" href="{{ docker_setup.install_url }}" target="_blank" rel="noreferrer">查看安装说明</a>
-      <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false">
-        <button class="ghost" type="submit" hx-disabled-elt="this">重新检测 <span class="htmx-indicator">检测中...</span></button>
-      </form>
+
+    <div class="docker-showcase-card docker-trust-card">
+      <div class="docker-trust-title">为什么这一步值得继续做</div>
+      <div class="docker-trust-copy">Docker Desktop 只负责把 RSS 服务稳定地跑在你的本机里。装好之后，后面的 RSS、LLM、计划任务和日报导出都可以直接在这个界面继续完成。</div>
+      <div class="docker-trust-list">
+        <div class="docker-trust-item">
+          <strong>官方来源</strong>
+          <span>下载按钮直达 Docker 官方 Windows 安装文档。</span>
+        </div>
+        <div class="docker-trust-item">
+          <strong>首次安装即可复用</strong>
+          <span>后续升级 GZHReader 时通常不需要重新配置 Docker。</span>
+        </div>
+        <div class="docker-trust-item">
+          <strong>过程中可能会弹出系统窗口</strong>
+          <span>安装或后续启动服务时，如果短暂打开浏览器、终端或系统确认窗口，都属于正常行为。</span>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="panel" style="margin: 0; box-shadow: none; background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);">
-    <h3 class="panel-title" style="font-size: 20px; margin-bottom: 10px;">下一步怎么做</h3>
-    <div class="checklist">
-      <div class="check-item">
-        <strong>1. 安装 Docker Desktop</strong>
-        <div class="subtle">点击上面的官方下载按钮，按官方向导安装即可。</div>
+  <div class="panel docker-journey-panel" style="margin: 0; box-shadow: none; background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);">
+    <div class="between" style="align-items: flex-start; margin-bottom: 18px;">
+      <div>
+        <h3 class="panel-title" style="font-size: 24px; margin-bottom: 8px;">三步完成首次安装</h3>
+        <div class="subtle">整个过程通常只需要几分钟。完成后，这个页面会恢复成正式的 8 步设置向导。</div>
       </div>
-      <div class="check-item">
-        <strong>2. 启动 Docker Desktop</strong>
-        <div class="subtle">首次启动通常会稍慢，请等到界面显示 Engine running 或类似“已就绪”的状态。</div>
+      <div class="docker-path-pill">安装完成后无需留在 Docker 官网</div>
+    </div>
+
+    <div class="docker-journey-grid">
+      <div class="check-item docker-step-card">
+        <div class="docker-step-no">01</div>
+        <strong>打开官方 Windows 安装页</strong>
+        <div class="subtle">点击“下载 Docker Desktop”后会新开浏览器页面，直接跟随 Docker 官方步骤下载和安装。</div>
       </div>
-      <div class="check-item">
-        <strong>3. 回到这里点“重新检测”</strong>
-        <div class="subtle">检测通过后，这里会自动恢复为正式向导，你就可以继续启动 <code>wewe-rss-app</code> 和 <code>mysql</code> 了。</div>
+      <div class="check-item docker-step-card">
+        <div class="docker-step-no">02</div>
+        <strong>启动 Docker Desktop 并等待引擎就绪</strong>
+        <div class="subtle">首次启动通常稍慢。等到 Docker Desktop 显示 Engine running 或类似“已就绪”状态即可。</div>
       </div>
-      <div class="check-item">
-        <strong>为什么必须先装 Docker？</strong>
-        <div class="subtle">因为 GZHReader 依赖 Docker Desktop 来启动 <code>wewe-rss-app</code> 和 <code>mysql</code>。没有它，RSS 服务就没法在本机跑起来。</div>
+      <div class="check-item docker-step-card">
+        <div class="docker-step-no">03</div>
+        <strong>回到 GZHReader 继续配置</strong>
+        <div class="subtle">点击“重新检测”后，如果 Docker 已就绪，页面会自动切回正式向导，继续启动 <code>wewe-rss-app</code> 和 <code>mysql</code>。</div>
       </div>
     </div>
-    <div class="detail-box" style="margin-top: 14px;">{{ docker_setup.next_step }}</div>
+
+    <div class="detail-box docker-next-step" style="margin-top: 18px;">{{ docker_setup.next_step }}</div>
   </div>
 </section>

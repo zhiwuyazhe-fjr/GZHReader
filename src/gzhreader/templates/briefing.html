@@ -115,12 +115,42 @@
       margin-bottom: 18px;
     }
     .markdown-body {
-      white-space: pre-wrap;
       word-break: break-word;
-      line-height: 1.95;
-      font-size: 15px;
+      line-height: 1.8;
+      font-size: 16px;
       margin: 0;
-      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+      color: var(--text);
+    }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      margin-top: 24px;
+      margin-bottom: 16px;
+    }
+    .markdown-body p, .markdown-body ul, .markdown-body ol {
+      margin-bottom: 16px;
+    }
+    .markdown-body blockquote {
+      margin: 0 0 16px 0;
+      padding: 0 16px;
+      border-left: 4px solid var(--brand);
+      color: var(--muted);
+      background: rgba(37, 99, 235, 0.05);
+      border-radius: 0 8px 8px 0;
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+    .markdown-body pre {
+      background: #f6f8fa;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    .markdown-body code {
+      background: rgba(8, 18, 36, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
     }
     @media (max-width: 720px) {
       .shell { padding: 18px 14px 36px; }
@@ -151,8 +181,29 @@
 
     <section class="card">
       <div class="copy-meta">如果你想改保存位置或重新生成，可以回到控制台继续操作。</div>
-      <pre class="markdown-body">{{ content }}</pre>
+      
+      <!-- Container for dynamically rendered markdown -->
+      <div id="markdown-container" class="markdown-body"></div>
+      
+      <!-- Store raw markdown safely -->
+      <script id="raw-markdown" type="text/markdown">{{ content }}</script>
     </section>
   </div>
+
+  <!-- Include marked.js for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const rawMarkdown = document.getElementById("raw-markdown").textContent;
+      // Configure marked (optional, enables more secure parsing)
+      marked.use({
+        gfm: true,
+        breaks: true
+      });
+      // Render markdown string to HTML
+      const htmlContent = marked.parse(rawMarkdown);
+      document.getElementById("markdown-container").innerHTML = htmlContent;
+    });
+  </script>
 </body>
 </html>

@@ -22,6 +22,12 @@
 
         <div class="step-body">
           <div class="detail-box">{{ step.detail }}</div>
+          {% if step.action_feedback %}
+            <div class="step-feedback {{ step.action_feedback.level }}" data-step-feedback="{{ step.id }}">
+              <strong>{{ step.action_feedback.title }}</strong>
+              <div>{{ step.action_feedback.message }}</div>
+            </div>
+          {% endif %}
 
           {% if step.id == 'environment' %}
             <div class="status-list">
@@ -35,7 +41,7 @@
                 </div>
               {% endfor %}
             </div>
-            <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+            <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false" class="wizard-form">
               <fieldset {% if step.locked %}disabled{% endif %}>
                 <button type="submit" hx-disabled-elt="this">重新检查环境 <span class="htmx-indicator">检测中...</span></button>
               </fieldset>
@@ -53,22 +59,23 @@
                 </div>
               {% endfor %}
             </div>
-            <form method="post" action="/actions/start-rss" hx-post="/actions/start-rss" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+            <form method="post" action="/actions/start-rss" hx-post="/actions/start-rss" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false" class="wizard-form">
               <fieldset {% if step.locked %}disabled{% endif %}>
+                <div class="field-note">启动服务时，程序可能会短暂打开终端窗口输出 Docker 日志。这是正常现象，等待按钮状态恢复即可。</div>
                 <button type="submit" hx-disabled-elt="this">{% if step.done %}重新启动 RSS 服务{% else %}启动 RSS 服务{% endif %} <span class="htmx-indicator">启动中...</span></button>
               </fieldset>
             </form>
 
           {% elif step.id == 'subscription' %}
-            <form method="post" action="/actions/open-wewe-rss" hx-post="/actions/open-wewe-rss" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+            <form method="post" action="/actions/open-wewe-rss" hx-post="/actions/open-wewe-rss" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false" class="wizard-form">
               <fieldset {% if step.locked %}disabled{% endif %}>
-                <div class="field-note">订阅完成后，点击页面顶部或第 1 步里的“刷新状态”。</div>
+                <div class="field-note">点击后会调用系统默认浏览器打开 wewe-rss 后台。订阅完成后，回到这里点击页面顶部或第 1 步里的“刷新状态”。</div>
                 <button type="submit" hx-disabled-elt="this">打开 wewe-rss 登录页 <span class="htmx-indicator">处理中...</span></button>
               </fieldset>
             </form>
 
           {% elif step.id == 'llm' %}
-            <form method="post" action="/actions/save-llm" hx-post="/actions/save-llm" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+            <form method="post" action="/actions/save-llm" hx-post="/actions/save-llm" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false" class="wizard-form">
               <fieldset {% if step.locked %}disabled{% endif %}>
                 <div class="grid-2">
                   <div class="field">
@@ -100,7 +107,9 @@
                       aria-label="显示或隐藏 API Key"
                       aria-pressed="false"
                       title="显示 API Key"
-                    >👁</button>
+                    >
+                      <svg class="eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke-width: 2; flex-shrink: 0;"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    </button>
                   </div>
                   <div class="field-note">
                     {% if llm_api_key_saved %}
@@ -134,19 +143,19 @@
                 <div class="meta">当前目录：{{ briefing_dir_display }}</div>
               </div>
               <div class="output-dir-actions">
-                <form method="post" action="/actions/save-output-dir" hx-post="/actions/save-output-dir" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="output-dir-form">
+                <form method="post" action="/actions/save-output-dir" hx-post="/actions/save-output-dir" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false" class="output-dir-form">
                   <input name="briefing_dir" value="{{ config.output.briefing_dir }}" placeholder="例如：D:/GZHReader/briefings">
                   <button type="submit" hx-disabled-elt="this">保存目录 <span class="htmx-indicator">保存中...</span></button>
                 </form>
-                <form method="post" action="/actions/pick-output-dir" hx-post="/actions/pick-output-dir" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false">
+                <form method="post" action="/actions/pick-output-dir" hx-post="/actions/pick-output-dir" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
                   <button class="light" type="submit" hx-disabled-elt="this">选择目录 <span class="htmx-indicator">打开中...</span></button>
                 </form>
               </div>
-              <div class="field-note">点击“选择目录”后，程序会弹出本机的文件夹选择框；如果你更习惯手动输入路径，也可以直接在上面的输入框里修改。</div>
+              <div class="field-note">点击“选择目录”后，程序会弹出本机的文件夹选择框；某些系统环境下也可能会短暂闪过终端或系统窗口，这属于正常行为。</div>
             </div>
 
           {% elif step.id == 'schedule' %}
-            <form method="post" action="/actions/install-schedule" hx-post="/actions/install-schedule" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+            <form method="post" action="/actions/install-schedule" hx-post="/actions/install-schedule" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false" class="wizard-form">
               <fieldset {% if step.locked %}disabled{% endif %}>
                 <div class="schedule-banner">
                   <div>
@@ -211,18 +220,20 @@
                     </div>
                   </div>
                 </div>
+                <div class="field-note">安装计划任务时，Windows 可能会短暂打开终端窗口执行注册脚本。出现后直接等待完成即可，不需要手动干预。</div>
                 <button type="submit" hx-disabled-elt="this">保存并安装计划任务 <span class="htmx-indicator">安装中...</span></button>
               </fieldset>
             </form>
 
           {% elif step.id == 'run_once' %}
-            <form method="post" action="/actions/run-now" hx-post="/actions/run-now" hx-target="#action-response" hx-swap="innerHTML" hx-push-url="false" class="wizard-form">
+            <form method="post" action="/actions/run-now" hx-post="/actions/run-now" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false" class="wizard-form">
               <fieldset {% if step.locked %}disabled{% endif %}>
                 <div class="field" style="max-width: 240px;">
                   <label>运行日期</label>
                   <input type="date" name="target_date" value="{{ today }}">
                 </div>
-                <button type="submit" hx-disabled-elt="this">立即运行测试 <span class="htmx-indicator">运行中...</span></button>
+                <div class="field-note">执行测试时可能会持续几分钟，也可能短暂打开终端窗口输出运行日志。这是正常现象。</div>
+                <button type="submit" hx-disabled-elt="this">立即运行测试 <span class="htmx-indicator">可能需要 5-10 分钟...</span></button>
               </fieldset>
             </form>
 

@@ -1,287 +1,213 @@
-# GZHReader
+<div align="center">
+  <h1>📰 GZHReader</h1>
+  <p><strong>把微信公众号阅读流，整理成一份真正可保存、可回看、可继续加工的日报。</strong></p>
 
-> 把微信公众号阅读流，整理成一份真正可保存、可回看、可继续加工的日报。
+  <p>
+    <a href="https://github.com/your-username/GZHReader/releases"><img src="https://img.shields.io/badge/platform-Windows-blue.svg?style=flat-square" alt="Platform"></a>
+    <img src="https://img.shields.io/badge/python-3.10+-blue.svg?style=flat-square" alt="Python Version">
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License"></a>
+  </p>
+</div>
 
-GZHReader 是一个面向 Windows 的微信公众号日报整理工具。它不是“手工维护一堆 RSS 源”的阅读器，而是一条完整的本地工作流：
+---
 
-`微信公众号 -> wewe-rss -> all.atom -> GZHReader -> SQLite -> LLM 总结 -> Markdown 日报`
+<blockquote style="border-left: 4px solid #f59e0b; padding: 10px 16px; background-color: #fffbeb; color: #b45309; border-radius: 4px; margin: 20px 0;">
+  <strong>⚠️ 重要提示：关于 WeWe RSS 端点掉线的说明</strong><br>
+由于引用的开源项目 <a href="https://github.com/cooderl/wewe-rss">WeWe RSS</a> 存在已知 Bug，当前在使用过程中<strong>可能需要每次重新登录 / 重新配置</strong>微信扫码才能正常拉取文章。这是一个临时性问题，如果你发现系统提示拉取失败或文章无法更新，请首先前往本地的 wewe-rss 后台重新扫码登录微信。
+</blockquote>
 
-当前项目的正式产品形态是：**GUI 为主，CLI 为辅；本地运行，支持打包成 Windows 安装程序。**
+---
 
-## 为什么值得用
+## ✨ 为什么值得用？
 
-- 用图形控制台串起环境检查、RSS 服务、LLM 配置、结果输出和计划任务
-- 不需要手工维护一堆 `feeds[]`，默认只消费一个聚合源 `all.atom`
-- RSS 正文不完整时，可以继续补抓正文，再生成摘要
-- 最终产物是 `Markdown` 日报，适合归档、搜索、同步和二次加工
-- 核心运行记录保存在本地 SQLite，方便重复执行、去重和追踪
+GZHReader 是一个面向 Windows 环境打造的微信公众号日报整理工具。它不仅仅是一个“阅读器”，也不是需要你手工维护繁杂源的工具，而是提供了一条高度自动化的本地工作流：
 
-## 快速开始
+微信公众号 ➔ wewe-rss ➔ all.atom ➔ GZHReader ➔ SQLite ➔ LLM 总结 ➔ Markdown 日报
 
-### 作为最终用户使用
+项目的正式产品形态为：**GUI 为主，CLI 为辅；完全本地运行，支持打包成便捷的 Windows 安装程序。**
 
-1. 安装并启动 Docker Desktop
-2. 运行 `GZHReader.exe`
-3. 在控制台中启动 `wewe-rss`
-4. 打开 `wewe-rss` 后台，扫码登录并订阅公众号
-5. 填写 LLM 配置
-6. 选择 Markdown 输出目录
-7. 立即运行一次，或安装每日计划任务
+- 🎯 **一站式管理**：用直观的图形控制台串起环境检查、RSS 服务、LLM 配置、结果输出和计划任务。
+- 🔌 **零心智订阅**：不需要手工维护一堆 eeds[]，默认只消费一个聚合源 ll.atom。
+- 🤖 **智能补全**：遇到 RSS 抓取正文不完整的情况，聪明的补抓逻辑会尝试通过 HTTP 或浏览器拉取正文并交给大模型生成摘要。
+- 📝 **Markdown 产物**：纯净的 Markdown 日报结果，非常适合归档、搜索、跨设备同步和二次深度创作。
+- 🗄️ **本地存储保障**：核心运行记录和数据严格保存在本地 SQLite，方便重复执行、去重和历史追踪，真正把数据交还给你。
 
-### 从源码运行
+---
 
-```powershell
+## 🚀 快速开始
+
+### 🎒 作为最终用户体验
+
+1. 安装并启动 **Docker Desktop**（必备）。
+2. 下载并运行 GZHReader.exe。
+3. 在可视化的控制台中一键启动 wewe-rss。
+4. 打开 wewe-rss 后台，扫码登录并订阅公众号。
+5. 填写你的 **LLM / OpenAI 兼容接口** 配置。
+6. 选择一个适合存放 **Markdown 日报** 的输出目录。
+7. 点击“立即运行”生成今天的第一份日报，或一键安装为 **Windows 每日计划任务**。
+
+### 💻 从源码运行（面向开发者）
+
+如果你想运行源码或参与共建，可以通过如下步骤：
+
+`powershell
+# 1. 建立虚拟环境
 python -m venv .venv
 .\.venv\Scripts\activate
+
+# 2. 安装依赖并链接项目
 pip install -e .
+
+# 3. 启动图形界面应用
 gzhreader app
-```
+`
 
-如果你想先生成默认配置：
-
-```powershell
+*(可选)* 如果你想先生成一套默认配置文件进行排查：
+`powershell
 gzhreader init
-```
+`
 
-### 常用命令
+### 🛠️ 常用 CLI 命令清单
 
-```powershell
-gzhreader app
-gzhreader doctor
-gzhreader run today
-gzhreader run date 2026-03-07
-gzhreader schedule install
-gzhreader schedule remove
-gzhreader wewe-rss init
-gzhreader wewe-rss up
-gzhreader wewe-rss down
-gzhreader wewe-rss logs
-```
+GZHReader 也为喜欢终端的硬核玩家保留了丰满的命令行支持：
 
-## 架构与数据流
+`powershell
+gzhreader app                 # 启动图形控制台
+gzhreader doctor              # 诊断本地环境健康度
+gzhreader run today           # 立即执行一次今日日报生成
+gzhreader run date 2026-03-07 # 指定日期生成日报
+gzhreader schedule install    # 安装系统计划任务
+gzhreader schedule remove     # 卸载系统计划任务
+gzhreader wewe-rss init       # 初始化本地 RSS 架构所需环境
+gzhreader wewe-rss up         # 启动 RSS 容器
+gzhreader wewe-rss down       # 停止 RSS 容器
+gzhreader wewe-rss logs       # 查看 RSS 容器日志
+`
 
-```mermaid
+---
+
+## 🏗️ 架构与数据流
+
+GZHReader 整体运作流程高度解耦：
+
+`mermaid
 flowchart LR
     U[用户] --> GUI[gzhreader app 控制台]
     U --> CLI[gzhreader CLI]
 
     GUI --> S[ReaderService]
     CLI --> S
-
+    
     S --> RSS[RSSClient]
     S --> FETCH[ArticleContentFetcher]
     S --> DB[(GZHReader SQLite)]
     S --> LLM[OpenAI-compatible LLM]
     S --> BRIEF[BriefingBuilder]
-
+    
     RSS --> WR[wewe-rss]
     WR --> MYSQL[(MySQL 可选)]
-
+    
     FETCH --> HTTP[HTTP 抓取]
     FETCH --> BROWSER[本机 Edge/Chrome]
-
+    
     BRIEF --> MD[Markdown 日报]
-```
+`
 
-### 一次完整运行会发生什么
+### ⚙️ 一次完整运行的心智模型
 
-1. `wewe-rss` 把公众号内容转成标准 RSS / Atom
-2. GZHReader 从 `source.url` 读取聚合源，默认是 `all.atom`
-3. GZHReader 过滤目标日期内的文章，并写入本地 SQLite
-4. 如果 RSS 没带够正文，则尝试 HTTP / 浏览器补抓
-5. GZHReader 调用 OpenAI 兼容接口生成摘要
-6. 最终生成 `output/briefings/YYYY-MM-DD.md`
+1. wewe-rss 将公众号内文转化为标准 RSS / Atom 格式。
+2. GZHReader 由 source.url 接口读取聚合源信息，默认为 ll.atom。
+3. GZHReader 针对目标日期内的文章进行精准过滤，并存入本地 SQLite。
+4. 校验文章正文；如字数不够/缺失，触发 HTTP 或调用浏览器补抓补全。
+5. 将干净的长文投喂给 OpenAI 兼容接口，要求以设定好的视角生成要点摘要。
+6. 最终的成果落盘为 output/briefings/YYYY-MM-DD.md。
 
-## 镜像和数据库分别做什么
+---
 
-很多人第一次看这个项目会搞混 `wewe-rss`、`mysql`、SQLite 和最终日报。下面这张表是最重要的理解入口。
+## 🔍 "镜像"与"数据库"解惑指南
 
-| 组件 | 是否必须 | 作用 | 普通用户要不要关心 |
+本项目结合了多个组件。以下是一张让你秒懂的对照表：
+
+| 核心组件 | 是否硬性需求 | 承担的作用 | 普通用户需要关心吗？ |
 | --- | --- | --- | --- |
-| Docker Desktop | 是 | 负责在本机启动 `wewe-rss` / `mysql` 容器 | 要，必须先装并启动 |
-| `cooderl/wewe-rss:latest` | 是 | 把公众号内容变成可消费的 RSS / Atom，并提供 Web 后台 | 要，会在控制台里启动和打开它 |
-| `mysql:8.4` | 仅 `compose_variant=mysql` 时启用 | 给 `wewe-rss` 容器提供数据库 | 通常不用手动操作 |
-| GZHReader 自己的 SQLite | 是 | 保存文章、摘要、运行记录、日报元数据 | 不用手动管理 |
-| Markdown 日报 | 是 | 最终产物，给你阅读、归档、同步和再加工 | 要，这是你最终会看的结果 |
+| **Docker Desktop** | ✅ 是 | 在本机提供运行 wewe-rss / MySQL 的基座容器环境 | **要**，必须事先安装并保持运行 |
+| **cooderl/wewe-rss:latest** | ✅ 是 | 提供获取微信文章的通道能力，并对外通过 Web 后台展现 | **要**，需要在控制台中启动它 |
+| **mysql:8.4** | 仅 compose_variant 为 mysql 时 | 为 wewe-rss 提供存储层 | 发行版默认无需在意 |
+| **GZHReader SQLite** | ✅ 是 | GZHReader 专属的心智底座（文章去重、执行日志、生成的摘要） | 后台静默执行，无需手动打理 |
+| **Markdown 日报** | ✅ 是 | 系统的最终精华产物，提供绝佳的离线阅读及归档体验 | **最重要**，这就是你的阅读结果 |
 
-### `AUTH_CODE` 是什么
+### 🔐 几个关键密码释疑
 
-- `AUTH_CODE` 是进入本地 `wewe-rss` 管理页的访问码
-- 它**不是**微信账号密码，也**不是** OpenAI API Key
-- 它只是 `wewe-rss` 本地后台的一层访问保护
+- **AUTH_CODE**：**它仅仅是用来看管本地 wewe-rss 后台的访问门票。** 它绝不是你的微信密码或大模型 API Key。
+- **MySQL 密码**：属于系统自建容器通讯用的内部凭证，只要你不需要直接操作容器里的库表，它就是透明的；如果你偏好 SQLite 内核模式（compose_variant = sqlite），则直接连密码都不需要关心了。
 
-### MySQL 密码是干什么的
+---
 
-- `MYSQL_ROOT_PASSWORD` / `MYSQL_PASSWORD` 是 **本地 MySQL 容器** 的凭据
-- 它们主要给 `wewe-rss` 容器自己连库使用
-- 普通用户通常不需要记住或手动使用它们
-- 如果你切到 `compose_variant = sqlite`，则不会启动 MySQL，也不需要关心这些密码
+## 📂 代码结构地图
 
-### 哪个数据库才是 GZHReader 自己的数据库
+如果你想修改或者研究源码，这张地图能帮你快速上手：
 
-是 **SQLite**。
+- **入口层** (cli.py, webapp.py, console_entry.py, gui_entry.py)：程序的启动点和交互包装层。
+- **业务编排层** (service.py, riefing.py)：核心脉络，把流程组织成一篇完整的日报。
+- **基础能力层** (
+ss_client.py, rticle_fetcher.py, summarizer.py, storage.py)：每个小功能（如补抓、与模型对话、存SQLite）。
+- **环境隔离层** (
+untime_paths.py, scheduler.py, wewe_rss.py)：用来抹平 Windows、打包版环境与开发版之间的差异。
 
-默认路径：
+> 📌 **改版本号该去哪？**
+唯有此一处：src/gzhreader/__init__.py
 
-- 开发环境：`data/gzhreader.db`
-- 安装版：`%APPDATA%\GZHReader\data\gzhreader.db`
-
-它负责保存：
-
-- 文章去重与正文内容
-- 摘要结果
-- 每次运行的状态与结果
-
-## 仓库结构
-
-```text
-GZHReader/
-├─ src/gzhreader/
-│  ├─ cli.py                 CLI 入口与命令编排
-│  ├─ webapp.py              本地 Web 控制台与交互逻辑
-│  ├─ service.py             日报主流程编排
-│  ├─ rss_client.py          聚合 RSS 读取与日期过滤
-│  ├─ article_fetcher.py     正文补抓（HTTP / 浏览器）
-│  ├─ summarizer.py          OpenAI 兼容摘要调用
-│  ├─ storage.py             SQLite 存储层
-│  ├─ briefing.py            Markdown 日报生成
-│  ├─ scheduler.py           Windows 计划任务安装/删除
-│  ├─ wewe_rss.py            bundled `wewe-rss` 脚手架与运行管理
-│  ├─ runtime_paths.py       开发环境 / 安装版路径切换
-│  ├─ templates/             控制台 HTML 模板
-│  └─ static/                前端静态资源
-├─ tests/                    自动化测试
-├─ scripts/                  打包与计划任务脚本
-├─ packaging/                PyInstaller / Inno Setup 配置与资源
-├─ infra/wewe-rss/           compose 模板目录
-├─ config.example.yaml       示例配置
-├─ pyproject.toml            Python 项目元数据
-├─ CHANGELOG.md              发版记录
-└─ LICENSE                   许可证
-```
-
-### 代码结构怎么理解最省力
-
-- **入口层**：`cli.py`、`webapp.py`、`console_entry.py`、`gui_entry.py`
-- **业务流程层**：`service.py`、`briefing.py`
-- **基础能力层**：`rss_client.py`、`article_fetcher.py`、`summarizer.py`、`storage.py`
-- **运行环境层**：`runtime_paths.py`、`scheduler.py`、`wewe_rss.py`
-- **展示层**：`templates/`、`static/`
-- **验证层**：`tests/`
-
-## 配置说明
-
-示例文件：`config.example.yaml`
-
-最关键的配置项通常只有这些：
-
-- `source.url`：聚合源地址，默认是 `http://localhost:4000/feeds/all.atom`
-- `rss.daily_article_limit`：当天最多处理多少篇文章，支持数字或 `all`
-- `llm.base_url` / `llm.model` / `llm.api_key`：摘要模型配置
-- `output.briefing_dir`：Markdown 日报输出目录
-- `wewe_rss.compose_variant`：`mysql` 或 `sqlite`
-- `wewe_rss.auth_code`：本地 `wewe-rss` 后台访问码
-
-默认不应该提交到 GitHub 的本地文件包括：
-
-- `config.yaml`
-- `data/`
-- `output/`
-- `build/`
-- `dist/`
-- `release/`
-- `infra/wewe-rss/.env`
-
-## 打包发布
-
-### 仅构建 PyInstaller 产物
-
-```powershell
-.\scripts\build_release.ps1 -SkipInstaller
-```
-
-输出目录：`dist/GZHReader/`
-
-### 构建 Windows 安装包
-
-先安装 `Inno Setup 6`，然后运行：
-
-```powershell
-.\scripts\build_release.ps1
-```
-
-输出目录：`release/`
-
-相关文件：
-
-- `packaging/pyinstaller/GZHReader.spec`
-- `packaging/inno/GZHReader.iss`
-- `scripts/build_release.ps1`
-
-## 版本号怎么改
-
-从现在开始，**版本号只改一个地方**：
-
-- `src/gzhreader/__init__.py`
-
-也就是修改：
-
-```python
+`python
 __version__ = "0.2.0"
-```
+`
 
-然后重新执行构建脚本：
+修改后通过 .\scripts\build_release.ps1 即能自动驱动发行文件的全域更新。
 
-```powershell
+---
+
+## 📦 发版打包命令
+
+### 纯可执行文件构建
+如果你只需提取绿色的 .exe 单文件本体：
+`powershell
+.\scripts\build_release.ps1 -SkipInstaller
+`
+生成的目录：dist/GZHReader/
+
+### Windows 安装包构建
+需要事先备好 **Inno Setup 6** 才能正常打包。
+`powershell
 .\scripts\build_release.ps1
-```
+`
+成品会稳当落在 
+elease/ 目录中。
 
-构建链路会使用同一个版本源去驱动：
+---
 
-- Python 包元数据
-- 安装器版本号
-- 默认 `User-Agent`
+## 📜 CHANGELOG 的作用
 
-## CHANGELOG 是干什么的
+本项目的 CHANGELOG.md 绝不是流于形式，它是每次更新不可或缺的说明：
+- 提醒开发者修补了什么。
+- 给终端用户提供了**极其真实的**升级决策依据。
+- 在 Github Release 里作为发版文案的第一手材料。
 
-`CHANGELOG.md` 用来记录每个版本新增了什么、修了什么、行为有什么变化。
+对于所有参与协作的人，请不要忘记在提交新功能前顺手来这里加上一行。
 
-它的价值很实际：
+---
 
-- 方便你自己回忆每次发版改了什么
-- 方便使用者判断是否值得升级
-- 方便 GitHub Release 直接整理发版说明
-- 方便以后定位“这个行为从哪个版本开始改变的”
+## 💡 FAQ
 
-如果你准备长期维护，这个文件非常有用。
+**Q：为什么现在只需要一个 source 聚合源？**
+A：通过只接 ll.atom 聚合通道的方法，用户完全摆脱了手动维护大量源列表的苦海。
 
-## FAQ
+**Q：既然只有一个源，为什么报表里还能分清不同公众号？**
+A：聚合内容本身自带作者和元数据标识，GZHReader 会利用这些标记智能为您归纳同类项。
 
-### 为什么现在只有一个 `source`？
+**Q：我看不到原始 HTML，只有 Markdown 吗？**
+A：是的。阅读与归档的本质是剥离噪音。如果你绝对需要保留最初阶的网页，必须前往配置明确开启 output.save_raw_html。
 
-因为当前产品形态已经切到“聚合源模式”。普通用户只需要关心 `all.atom`，而不是自己维护多条 RSS 源。
+---
 
-### 为什么只有一个源，日报里还能区分不同公众号？
+## ⚖️ 免责声明
 
-因为聚合源里的每篇文章仍然带有作者信息，GZHReader 会按作者自动分组。
-
-### 为什么最后只看到 `.md`，看不到 HTML？
-
-因为 Markdown 是默认成品，原始 HTML 归档默认关闭，只在你明确开启 `output.save_raw_html` 时才会保存。
-
-### 最终用户也需要 Docker Desktop 吗？
-
-需要。当前版本把 `wewe-rss` 当作正式工作流的一部分，但 Docker Desktop 本身不会被打包进安装器。
-
-### `wewe-rss`、MySQL、SQLite、Markdown 之间的关系怎么记？
-
-一句话：
-
-- `wewe-rss` 负责“把公众号变成 RSS”
-- `mysql` 只是在 MySQL 方案下给 `wewe-rss` 提供数据库
-- SQLite 是 GZHReader 自己的数据底座
-- Markdown 是最后给你看的成品
-
-## 免责声明
-
-本项目依赖第三方服务与接口，包括但不限于 Docker Desktop、`wewe-rss`、浏览器环境和 OpenAI 兼容 LLM API。发布和分发成品前，请自行确认你的使用方式与相关服务条款相符。
+本项目依赖若干第三方服务及外部开源方案（包含但不限于 Docker Desktop、wewe-rss 与 OpenAI 兼容大模型 API），且文章数据皆受其平台使用限制约束。本工具的使用及因此所引发的风险等一概由使用者自理，本库提供的内容不构成最终正式承诺。请确保你的合理使用符合各大平台的合规章程。

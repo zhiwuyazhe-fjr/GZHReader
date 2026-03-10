@@ -60,10 +60,13 @@ def _get_static_dir() -> Path:
 
 def _create_templates() -> Jinja2Templates:
     return Jinja2Templates(directory=str(_get_template_dir()))
-DOCKER_DOWNLOAD_URL = "https://www.docker.com/products/docker-desktop/"
-DOCKER_INSTALL_URL = "https://docs.docker.com/desktop/setup/install/windows-install/"
+
+
+DOCKER_DOWNLOAD_URL = "https://docs.docker.com/desktop/setup/install/windows-install/"
+DOCKER_INSTALL_URL = "https://docs.docker.com/desktop/"
 BRIEFING_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:_\d+)?\.md$")
 LLM_API_KEY_PLACEHOLDER = "__GZHREADER_KEEP_EXISTING_API_KEY__"
+TERMINAL_NOTICE = "运行某些步骤时，程序可能会短暂打开终端或系统窗口。这是正常现象，不需要手动关闭，等待当前步骤完成即可。"
 
 
 def _build_llm_status(config: AppConfig) -> dict[str, object]:
@@ -104,6 +107,25 @@ class BriefingFile:
     path: str
 
 
+def _build_action_result(
+    *,
+    scope: str,
+    title: str,
+    message: str,
+    level: str,
+    step_id: str | None = None,
+) -> dict[str, str]:
+    result = {
+        "scope": scope,
+        "title": title,
+        "message": message,
+        "level": level,
+    }
+    if step_id is not None:
+        result["step_id"] = step_id
+    return result
+
+
 class DashboardBackend:
     def __init__(self, config_path: Path) -> None:
         self.config_path = config_path
@@ -114,14 +136,20 @@ class DashboardBackend:
     def save_config(self, config: AppConfig) -> None:
         save_config(config, self.config_path)
 
-    def build_dashboard_context(self, *, message: str = "", level: str = "info") -> dict:
+    def build_dashboard_context(
+        self,
+        *,
+        message: str = "",
+        level: str = "info",
+        action_result: dict | None = None,
+    ) -> dict:
         config = self.load_config()
         configure_logging(config.output.log_level)
         briefings = self.list_briefings(config)
         latest_briefing = briefings[0] if briefings else None
         status = self.collect_status(config)
         llm_status = _build_llm_status(config)
-        wizard_steps = self.build_wizard_steps(config, status, latest_briefing)
+        wizard_steps = self.build_wizard_steps(config, status, latest_briefing, action_result=action_result)
         docker_setup = self.build_docker_setup(status)
         schedule_hour, schedule_minute = _split_daily_time(config.schedule.daily_time)
         daily_article_limit = normalize_daily_article_limit(config.rss.daily_article_limit)
@@ -146,6 +174,8 @@ class DashboardBackend:
             "llm_api_key_saved": llm_status["api_key_saved"],
             "llm_api_key_source": llm_status["api_key_source"],
             "llm_uses_env_api_key": llm_status["uses_env_api_key"],
+            "advanced_feedback": action_result if action_result and action_result.get("scope") == "advanced" else None,
+            "terminal_notice": TERMINAL_NOTICE,
         }
 
     def collect_status(self, config: AppConfig) -> dict:
@@ -227,7 +257,14 @@ class DashboardBackend:
             "install_url": DOCKER_INSTALL_URL,
         }
 
-    def build_wizard_steps(self, config: AppConfig, status: dict, latest_briefing: BriefingFile | None) -> list[dict]:
+    def build_wizard_steps(
+        self,
+        config: AppConfig,
+        status: dict,
+        latest_briefing: BriefingFile | None,
+        *,
+        action_result: dict | None = None,
+    ) -> list[dict]:
         output_dir_display = _display_path(config.output.briefing_dir)
         raw_steps = [
             {
@@ -302,7 +339,10 @@ class DashboardBackend:
         for index, step in enumerate(raw_steps):
             locked = not unlocked
             current = index == current_index and not locked
-            steps.append({**step, "locked": locked, "current": current})
+            action_feedback = None
+            if action_result and action_result.get("scope") == "wizard" and action_result.get("step_id") == step["id"]:
+                action_feedback = action_result
+            steps.append({**step, "locked": locked, "current": current, "action_feedback": action_feedback})
             if not step["done"]:
                 unlocked = False
         return steps
@@ -526,40 +566,40 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
 
     @web.get("/actions/refresh")
     def refresh(request: Request):
-        return _after_action(request, "状态已刷新。", "info")
+        return _after_action(request, "状态已刷新。", "info", step_id="environment", action_title="重新检查环境")
 
     @web.post("/actions/start-rss")
     def start_rss(request: Request):
-        blocked = _block_if_docker_unavailable(request, "启动 RSS 服务")
+        blocked = _block_if_docker_unavailable(request, "启动 RSS 服务", step_id="rss_service")
         if blocked is not None:
             return blocked
         try:
             detail = request.app.state.backend.start_rss()
-            return _after_action(request, f"RSS 服务已启动：{detail}", "success")
+            return _after_action(request, f"RSS 服务已启动：{detail}", "success", step_id="rss_service", action_title="启动 RSS 服务")
         except Exception as exc:
-            return _after_action(request, f"启动 RSS 服务失败：{exc}", "error")
+            return _after_action(request, f"启动 RSS 服务失败：{exc}", "error", step_id="rss_service", action_title="启动 RSS 服务")
 
     @web.post("/actions/stop-rss")
     def stop_rss(request: Request):
-        blocked = _block_if_docker_unavailable(request, "停止 RSS 服务")
+        blocked = _block_if_docker_unavailable(request, "停止 RSS 服务", step_id="rss_service")
         if blocked is not None:
             return blocked
         try:
             detail = request.app.state.backend.stop_rss()
-            return _after_action(request, f"RSS 服务已停止：{detail}", "success")
+            return _after_action(request, f"RSS 服务已停止：{detail}", "success", step_id="rss_service", action_title="停止 RSS 服务")
         except Exception as exc:
-            return _after_action(request, f"停止 RSS 服务失败：{exc}", "error")
+            return _after_action(request, f"停止 RSS 服务失败：{exc}", "error", step_id="rss_service", action_title="停止 RSS 服务")
 
     @web.post("/actions/open-wewe-rss")
     def open_wewe_rss(request: Request):
-        blocked = _block_if_docker_unavailable(request, "打开 wewe-rss")
+        blocked = _block_if_docker_unavailable(request, "打开 wewe-rss", step_id="subscription")
         if blocked is not None:
             return blocked
         try:
             detail = request.app.state.backend.open_wewe_rss()
-            return _after_action(request, detail, "success")
+            return _after_action(request, detail, "success", step_id="subscription", action_title="打开 wewe-rss 后台")
         except Exception as exc:
-            return _after_action(request, f"打开 wewe-rss 后台失败：{exc}", "error")
+            return _after_action(request, f"打开 wewe-rss 后台失败：{exc}", "error", step_id="subscription", action_title="打开 wewe-rss 后台")
 
     @web.post("/actions/save-llm")
     def save_llm(
@@ -570,7 +610,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         timeout_seconds: int = Form(...),
         retries: int = Form(...),
     ):
-        blocked = _block_if_docker_unavailable(request, "保存 LLM 配置")
+        blocked = _block_if_docker_unavailable(request, "保存 LLM 配置", step_id="llm")
         if blocked is not None:
             return blocked
         ok, detail = request.app.state.backend.save_llm(
@@ -580,7 +620,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
             timeout_seconds=timeout_seconds,
             retries=retries,
         )
-        return _after_action(request, detail, "success" if ok else "warning")
+        return _after_action(request, detail, "success" if ok else "warning", step_id="llm", action_title="保存并测试 LLM")
 
     @web.post("/actions/save-schedule")
     def save_schedule(
@@ -589,7 +629,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         run_minute: int = Form(...),
         daily_article_limit: str = Form(...),
     ):
-        blocked = _block_if_docker_unavailable(request, "保存计划任务")
+        blocked = _block_if_docker_unavailable(request, "保存计划任务", step_id="schedule")
         if blocked is not None:
             return blocked
         try:
@@ -598,9 +638,9 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
                 run_minute=run_minute,
                 daily_article_limit=daily_article_limit,
             )
-            return _after_action(request, detail, "success")
+            return _after_action(request, detail, "success", step_id="schedule", action_title="保存计划任务设置")
         except Exception as exc:
-            return _after_action(request, f"保存计划任务配置失败：{exc}", "error")
+            return _after_action(request, f"保存计划任务配置失败：{exc}", "error", step_id="schedule", action_title="保存计划任务设置")
 
     @web.post("/actions/install-schedule")
     def install_schedule_action(
@@ -609,7 +649,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         run_minute: int = Form(...),
         daily_article_limit: str = Form(...),
     ):
-        blocked = _block_if_docker_unavailable(request, "安装计划任务")
+        blocked = _block_if_docker_unavailable(request, "安装计划任务", step_id="schedule")
         if blocked is not None:
             return blocked
         try:
@@ -618,62 +658,62 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
                 run_minute=run_minute,
                 daily_article_limit=daily_article_limit,
             )
-            return _after_action(request, detail, "success")
+            return _after_action(request, detail, "success", step_id="schedule", action_title="安装计划任务")
         except Exception as exc:
-            return _after_action(request, f"安装计划任务失败：{exc}", "error")
+            return _after_action(request, f"安装计划任务失败：{exc}", "error", step_id="schedule", action_title="安装计划任务")
 
     @web.post("/actions/save-output-dir")
     def save_output_dir(request: Request, briefing_dir: str = Form(...)):
         try:
             detail = request.app.state.backend.save_output_dir(briefing_dir)
-            return _after_action(request, detail, "success")
+            return _after_action(request, detail, "success", step_id="output_dir", action_title="保存 Markdown 目录")
         except Exception as exc:
-            return _after_action(request, f"保存 Markdown 目录失败：{exc}", "error")
+            return _after_action(request, f"保存 Markdown 目录失败：{exc}", "error", step_id="output_dir", action_title="保存 Markdown 目录")
 
     @web.post("/actions/pick-output-dir")
     async def pick_output_dir(request: Request):
         try:
             ok, detail = request.app.state.backend.pick_output_dir()
-            return _after_action(request, detail, "success" if ok else "info")
+            return _after_action(request, detail, "success" if ok else "info", step_id="output_dir", action_title="选择 Markdown 目录")
         except Exception as exc:
-            return _after_action(request, f"打开目录选择器失败：{exc}", "error")
+            return _after_action(request, f"打开目录选择器失败：{exc}", "error", step_id="output_dir", action_title="选择 Markdown 目录")
 
     @web.post("/actions/remove-schedule")
     def remove_schedule_action(request: Request):
-        blocked = _block_if_docker_unavailable(request, "删除计划任务")
+        blocked = _block_if_docker_unavailable(request, "删除计划任务", scope="advanced")
         if blocked is not None:
             return blocked
         try:
             detail = request.app.state.backend.remove_schedule()
-            return _after_action(request, detail, "success")
+            return _after_action(request, detail, "success", scope="advanced", action_title="删除计划任务")
         except Exception as exc:
-            return _after_action(request, f"删除计划任务失败：{exc}", "error")
+            return _after_action(request, f"删除计划任务失败：{exc}", "error", scope="advanced", action_title="删除计划任务")
 
     @web.post("/actions/run-now")
     def run_now(request: Request, target_date: str = Form(...)):
-        blocked = _block_if_docker_unavailable(request, "立即运行测试")
+        blocked = _block_if_docker_unavailable(request, "立即运行测试", step_id="run_once")
         if blocked is not None:
             return blocked
         try:
             detail_date = date.fromisoformat(target_date)
             ok, detail = request.app.state.backend.run_now(detail_date)
-            return _after_action(request, detail, "success" if ok else "warning")
+            return _after_action(request, detail, "success" if ok else "warning", step_id="run_once", action_title="立即运行测试")
         except Exception as exc:
-            return _after_action(request, f"立即运行失败：{exc}", "error")
+            return _after_action(request, f"立即运行失败：{exc}", "error", step_id="run_once", action_title="立即运行测试")
 
     @web.post("/actions/save-advanced")
     def save_advanced(request: Request, yaml_text: str = Form(...)):
         try:
             detail = request.app.state.backend.save_advanced_yaml(yaml_text)
-            return _after_action(request, detail, "success")
+            return _after_action(request, detail, "success", scope="advanced", action_title="保存高级配置")
         except Exception as exc:
-            return _after_action(request, f"保存高级配置失败：{exc}", "error")
+            return _after_action(request, f"保存高级配置失败：{exc}", "error", scope="advanced", action_title="保存高级配置")
 
     @web.get("/briefings/latest")
     def latest_briefing(request: Request):
         briefings = request.app.state.backend.build_dashboard_context()["briefings"]
         if not briefings:
-            return _after_action(request, "还没有生成过 Markdown 日报。", "warning")
+            return _after_action(request, "还没有生成过 Markdown 日报。", "warning", step_id="briefing", action_title="查看最新日报")
         return RedirectResponse(url=f"/briefings/{briefings[0].date_text}", status_code=303)
 
     @web.get("/briefings/{briefing_date}", response_class=HTMLResponse)
@@ -681,7 +721,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         try:
             file_path, content = request.app.state.backend.read_briefing(briefing_date)
         except Exception as exc:
-            return _after_action(request, f"打开日报失败：{exc}", "error")
+            return _after_action(request, f"打开日报失败：{exc}", "error", step_id="briefing", action_title="打开日报")
         return templates.TemplateResponse(
             request,
             "briefing.html",
@@ -751,9 +791,24 @@ def _render_error_response(request: Request, *, title: str, description: str, st
     return HTMLResponse(html, status_code=status_code)
 
 
-def _after_action(request: Request, message: str, level: str):
+def _after_action(
+    request: Request,
+    message: str,
+    level: str,
+    *,
+    step_id: str | None = None,
+    action_title: str = "最近操作",
+    scope: str = "wizard",
+):
     if request.headers.get("HX-Request") == "true":
-        context = request.app.state.backend.build_dashboard_context(message=message, level=level)
+        action_result = _build_action_result(
+            scope=scope,
+            title=action_title,
+            message=message,
+            level=level,
+            step_id=step_id,
+        )
+        context = request.app.state.backend.build_dashboard_context(message=message, level=level, action_result=action_result)
         return request.app.state.templates.TemplateResponse(request, "partials/action_updates.html", context)
     return _redirect("/", message, level)
 
@@ -763,7 +818,13 @@ def _redirect(path: str, message: str, level: str) -> RedirectResponse:
     return RedirectResponse(url=f"{path}?{query}", status_code=303)
 
 
-def _block_if_docker_unavailable(request: Request, action_name: str):
+def _block_if_docker_unavailable(
+    request: Request,
+    action_name: str,
+    *,
+    step_id: str | None = None,
+    scope: str = "wizard",
+):
     docker_ok, docker_detail = request.app.state.backend.is_docker_ready()
     if docker_ok:
         return None
@@ -771,6 +832,9 @@ def _block_if_docker_unavailable(request: Request, action_name: str):
         request,
         f"Docker Desktop 还没准备好，暂时不能{action_name}。{docker_detail}",
         "warning",
+        step_id=step_id,
+        action_title=action_name,
+        scope=scope,
     )
 
 
