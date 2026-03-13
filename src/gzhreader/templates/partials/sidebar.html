@@ -1,0 +1,106 @@
+<div class="sidebar-brand sidebar-brand-muted">
+  <img src="/static/brand/gzhreader-icon.svg" alt="GZHReader">
+  <div>
+    <div class="sidebar-title">GZHReader</div>
+    <div class="sidebar-subtitle">{{ '首次安装引导' if docker_blocked else '本地设置助手' }}</div>
+  </div>
+</div>
+
+{% if not docker_blocked %}
+  <div class="sidebar-section sidebar-overview-section">
+    <div class="sidebar-section-title">运行概况</div>
+    <div class="sidebar-status-list">
+      <button class="sidebar-status-card" type="button" data-scroll-target="#wizard-step-environment">
+        <span class="sidebar-status-state">{{ '已就绪' if status.environment_ready else '待检查' }}</span>
+        <span class="sidebar-status-label">环境检查</span>
+      </button>
+
+      <button class="sidebar-status-card" type="button" data-scroll-target="#wizard-step-rss_service">
+        <span class="sidebar-status-state">{{ '运行中' if status.rss_service_ready else '未启动' }}</span>
+        <span class="sidebar-status-label">RSS 服务</span>
+      </button>
+
+      <button class="sidebar-status-card" type="button" data-scroll-target="#wizard-step-llm">
+        <span class="sidebar-status-state">{{ '已填写' if status.llm_configured else '待配置' }}</span>
+        <span class="sidebar-status-label">LLM 配置</span>
+      </button>
+
+      <button class="sidebar-status-card" type="button" data-scroll-target="#wizard-step-schedule">
+        <span class="sidebar-status-state">{{ '已开启' if status.schedule_installed else '未开启' }}</span>
+        <span class="sidebar-status-label">每日任务</span>
+      </button>
+    </div>
+  </div>
+{% endif %}
+
+<div class="sidebar-section">
+  <div class="sidebar-section-title">关键入口</div>
+  <div class="sidebar-entry-list">
+    <details class="sidebar-entry-card" data-sidebar-section="aggregate-feed">
+      <summary class="sidebar-entry-summary">
+        <span>
+          <span class="sidebar-link-kicker">GZHReader 实际读取的 RSS</span>
+          <strong>聚合 RSS / all.atom</strong>
+        </span>
+      </summary>
+      <div class="sidebar-entry-body">
+        <div class="subtle">这是 GZHReader 真正读取的聚合源，不是给你登录的页面。需要给阅读器、自动化或其他工具粘贴 RSS 地址时，用这个链接。</div>
+        <code>{{ config.source.url }}</code>
+        <div class="sidebar-link-actions sidebar-link-actions-adaptive">
+          <a class="button light" href="{{ config.source.url }}" target="_blank" rel="noreferrer">打开链接</a>
+          <button class="button secondary copy-button" type="button" data-copy-text="{{ config.source.url }}" data-copied-label="已复制">复制链接</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="sidebar-entry-card" data-sidebar-section="wewe-admin">
+      <summary class="sidebar-entry-summary">
+        <span>
+          <span class="sidebar-link-kicker">登录、订阅、刷新 RSS</span>
+          <strong>wewe-rss 后台</strong>
+        </span>
+      </summary>
+      <div class="sidebar-entry-body">
+        <div class="subtle">这里用来输入 <code>AUTH_CODE</code>、进入账号管理扫码登录、添加公众号订阅，以及在掉线后点击“更新全部”。</div>
+        <code>{{ config.wewe_rss.base_url }}</code>
+        <div class="status-row">
+          <div>
+            <strong>AUTH_CODE</strong>
+            <div class="status-meta"><code>{{ config.wewe_rss.auth_code }}</code></div>
+          </div>
+          <span class="badge ok">首次登录输入</span>
+        </div>
+        <div class="sidebar-link-actions sidebar-link-actions-adaptive">
+          <form method="post" action="/actions/open-wewe-rss" hx-post="/actions/open-wewe-rss" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
+            <button type="submit" hx-disabled-elt="this" {% if docker_blocked %}disabled{% endif %}>{{ 'Docker 就绪后再打开' if docker_blocked else '打开后台' }} <span class="htmx-indicator">处理中...</span></button>
+          </form>
+          <a class="button secondary" href="https://github.com/cooderl/wewe-rss" target="_blank" rel="noreferrer">官方项目</a>
+        </div>
+      </div>
+    </details>
+
+    <details class="sidebar-entry-card" data-sidebar-section="briefing-directory">
+      <summary class="sidebar-entry-summary">
+        <span>
+          <span class="sidebar-link-kicker">日报结果保存位置</span>
+          <strong>Markdown 输出目录</strong>
+        </span>
+      </summary>
+      <div class="sidebar-entry-body">
+        <div class="subtle">这里保存每天生成的 Markdown 日报。想查看结果时，可以直接打开目录，或者点“查看最新日报”。</div>
+        <code>{{ briefing_dir_display }}</code>
+        {% if latest_briefing %}
+          <div class="field-note">最近一次生成：<code>{{ latest_briefing.date_text }}</code></div>
+        {% else %}
+          <div class="field-note">还没有生成过日报，完成第 7 步后这里会出现最新结果。</div>
+        {% endif %}
+        <div class="sidebar-link-actions sidebar-link-actions-adaptive">
+          <form method="post" action="/actions/open-output-dir" hx-post="/actions/open-output-dir" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
+            <button class="light" type="submit" hx-disabled-elt="this">打开目录 <span class="htmx-indicator">处理中...</span></button>
+          </form>
+          <a class="button secondary" href="/briefings/latest">查看最新日报</a>
+        </div>
+      </div>
+    </details>
+  </div>
+</div>

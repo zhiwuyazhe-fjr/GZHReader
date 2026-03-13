@@ -32,6 +32,7 @@
       --radius-lg: 22px;
       --radius-md: 18px;
       --radius-sm: 12px;
+      --sidebar-width: 300px;
       --transition-core: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
       --glow-brand: 0 0 0 1px rgba(59, 130, 246, 0.55), 0 0 16px rgba(59, 130, 246, 0.35);
       --glow-soft: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 12px 32px rgba(0, 0, 0, 0.45);
@@ -57,16 +58,47 @@
       min-height: 100vh;
       width: 100%;
       background: var(--bg);
+      align-items: stretch;
     }
     .sidebar {
-      width: 300px;
-      padding: 26px 22px;
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      flex: 0 0 var(--sidebar-width);
+      padding: 18px 18px 28px;
       background: var(--surface-strong);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       gap: 20px;
       overflow-y: auto;
+    }
+    .sidebar-resizer-shell {
+      flex: 0 0 14px;
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.45), rgba(10, 10, 10, 0));
+    }
+    .sidebar-resizer {
+      width: 4px;
+      margin: 12px 0;
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.75), rgba(59, 130, 246, 0.3));
+      opacity: 0.55;
+      cursor: col-resize;
+      transition: var(--transition-core);
+      outline: none;
+    }
+    .sidebar-resizer-shell:hover .sidebar-resizer,
+    .sidebar-resizer:focus-visible,
+    body.sidebar-dragging .sidebar-resizer {
+      opacity: 1;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.35);
+    }
+    body.sidebar-dragging,
+    body.sidebar-dragging * {
+      cursor: col-resize !important;
+      user-select: none;
     }
     .sidebar-brand {
       display: flex;
@@ -91,6 +123,24 @@
       font-size: 12px;
       color: var(--muted);
     }
+    .sidebar-brand-muted {
+      padding: 4px 2px 10px;
+      opacity: 0.78;
+    }
+    .sidebar-brand-muted .sidebar-brand img,
+    .sidebar-brand-muted img {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+    }
+    .sidebar-brand-muted .sidebar-title {
+      font-size: 17px;
+    }
+    .sidebar-brand-muted .sidebar-subtitle {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
     .sidebar-section {
       display: grid;
       gap: 12px;
@@ -101,14 +151,107 @@
       text-transform: uppercase;
       color: var(--muted);
     }
+    .sidebar-overview-section {
+      gap: 14px;
+    }
+    .sidebar-status-list {
+      display: grid;
+      gap: 12px;
+    }
+    .sidebar-status-card {
+      width: 100%;
+      min-height: 112px;
+      padding: 18px 16px;
+      border-radius: 22px;
+      border: 1px solid rgba(59, 130, 246, 0.18);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(10, 10, 10, 0.92));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 38px -30px rgba(59, 130, 246, 0.45);
+      display: grid;
+      gap: 10px;
+      align-content: center;
+      justify-items: start;
+      text-align: left;
+    }
+    .sidebar-status-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(59, 130, 246, 0.35);
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.28), 0 20px 32px -24px rgba(59, 130, 246, 0.55);
+    }
+    .sidebar-status-card:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35), 0 0 0 4px rgba(59, 130, 246, 0.22);
+    }
+    .sidebar-status-state {
+      font-size: 32px;
+      line-height: 1.05;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #f8fbff;
+    }
+    .sidebar-status-label {
+      font-size: 18px;
+      color: #dbeafe;
+      line-height: 1.35;
+    }
+    .sidebar-entry-list {
+      display: grid;
+      gap: 12px;
+    }
+    .sidebar-entry-card {
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--surface);
+      box-shadow: var(--glow-soft);
+      overflow: hidden;
+    }
+    .sidebar-entry-card > summary {
+      list-style: none;
+    }
+    .sidebar-entry-card > summary::-webkit-details-marker {
+      display: none;
+    }
+    .sidebar-entry-summary {
+      position: relative;
+      display: block;
+      padding: 16px;
+      cursor: pointer;
+    }
+    .sidebar-entry-summary span {
+      display: grid;
+      gap: 8px;
+    }
+    .sidebar-entry-summary::after {
+      content: "";
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      width: 10px;
+      height: 10px;
+      border-right: 2px solid rgba(191, 219, 254, 0.75);
+      border-bottom: 2px solid rgba(191, 219, 254, 0.75);
+      transform: translateY(-65%) rotate(45deg);
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      opacity: 0.85;
+    }
+    .sidebar-entry-card[open] .sidebar-entry-summary::after {
+      transform: translateY(-35%) rotate(225deg);
+    }
+    .sidebar-entry-body {
+      display: grid;
+      gap: 12px;
+      padding: 0 16px 16px;
+      container-type: inline-size;
+    }
 
     .main-area {
       flex: 1;
+      min-width: 0;
       overflow-y: auto;
     }
     .container {
-      max-width: 1180px;
+      max-width: none;
       margin: 0 auto;
+      width: 100%;
       padding: 28px 32px 56px;
     }
 
@@ -186,6 +329,76 @@
       line-height: 1.4;
       color: #dbeafe;
     }
+    .hero-centered {
+      padding: 34px 38px 30px;
+    }
+    .hero-copy-centered {
+      justify-items: center;
+      text-align: center;
+      gap: 18px;
+    }
+    .hero-eyebrow {
+      justify-self: center;
+    }
+    .hero-brand-lockup {
+      display: grid;
+      justify-items: center;
+      gap: 14px;
+      width: 100%;
+    }
+    .hero-logo-xl {
+      width: 102px;
+      height: 102px;
+      padding: 16px;
+      border-radius: 28px;
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.32);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 16px 36px -28px rgba(59, 130, 246, 0.55);
+    }
+    .hero-brand-lockup h1 {
+      margin: 0;
+      font-size: clamp(42px, 4.6vw, 58px);
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+    .hero-chip-band {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .hero-chip-wide {
+      width: 100%;
+      min-height: 54px;
+      justify-content: center;
+      padding: 14px 18px;
+      border-radius: 18px;
+      font-size: 14px;
+      font-weight: 600;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(10, 10, 10, 0.92));
+      border-color: rgba(59, 130, 246, 0.24);
+      text-align: center;
+    }
+    .hero-lead {
+      max-width: 980px;
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.85;
+      color: #e2ebff;
+      text-align: center;
+    }
+    .hero-primary-actions {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+    .hero-primary-button {
+      min-width: 220px;
+      min-height: 54px;
+      padding: 0 28px;
+      font-size: 16px;
+      font-weight: 700;
+    }
 
     .hero-side {
       background: var(--surface);
@@ -234,6 +447,137 @@
     .hero-mini-card span {
       font-size: 12px;
       color: var(--muted);
+    }
+    .sidebar-link-list {
+      display: grid;
+      gap: 12px;
+    }
+    .sidebar-link-card {
+      display: grid;
+      gap: 10px;
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: var(--glow-soft);
+    }
+    .sidebar-link-kicker {
+      display: inline-flex;
+      width: fit-content;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.16);
+      color: #bfdbfe;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+    .sidebar-link-card strong {
+      font-size: 16px;
+      line-height: 1.4;
+    }
+    .sidebar-link-card code {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .sidebar-link-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .sidebar-link-actions form {
+      margin: 0;
+    }
+    .sidebar-link-actions-adaptive {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: stretch;
+    }
+    .sidebar-link-actions-adaptive > * {
+      min-width: 0;
+    }
+    .sidebar-link-actions-adaptive form {
+      width: 100%;
+    }
+    .sidebar-link-actions-adaptive .button,
+    .sidebar-link-actions-adaptive button {
+      width: 100%;
+    }
+    @container (max-width: 300px) {
+      .sidebar-link-actions-adaptive {
+        grid-template-columns: 1fr;
+      }
+    }
+    .copy-button.copied, .copy-button.copied:hover {
+      background: rgba(34, 197, 94, 0.18);
+      border-color: rgba(34, 197, 94, 0.55);
+      color: #86efac;
+      box-shadow: none;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      position: relative;
+      z-index: 1;
+      margin-top: 2px;
+    }
+    .hero-actions form {
+      margin: 0;
+    }
+    .hero-actions-secondary {
+      justify-content: center;
+      width: 100%;
+    }
+    .hero-actions-secondary .button,
+    .hero-actions-secondary button {
+      min-width: 178px;
+    }
+    .hero-status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      margin-top: 8px;
+    }
+    .hero-status-card {
+      display: grid;
+      gap: 10px;
+      padding: 16px;
+      border-radius: 20px;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      backdrop-filter: blur(12px);
+      min-height: 230px;
+      text-align: left;
+    }
+    .hero-status-card strong {
+      font-size: 18px;
+      line-height: 1.35;
+      color: #f8fbff;
+    }
+    .hero-status-card span {
+      font-size: 13px;
+      line-height: 1.7;
+      color: #dbeafe;
+      overflow-wrap: anywhere;
+    }
+    .hero-status-card code {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      color: #e2e8f0;
+    }
+    .hero-status-card .sidebar-link-actions {
+      margin-top: auto;
     }
 
     .main-stack { display: grid; gap: 24px; }
@@ -400,6 +744,10 @@
     .flash.info { background: var(--brand-soft); border-color: rgba(59, 130, 246, 0.4); color: #bfdbfe; }
 
     .wizard { display: grid; gap: 18px; }
+    #wizard-shell,
+    [id^="wizard-step-"] {
+      scroll-margin-top: 26px;
+    }
     .step-card {
       position: relative;
       border: 1px solid var(--border);
@@ -505,6 +853,50 @@
     .step-feedback.warning { background: var(--warn-soft); border-color: rgba(245, 158, 11, 0.35); color: #fcd34d; }
     .step-feedback.error { background: var(--danger-soft); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }
     .step-feedback.info { background: var(--brand-soft); border-color: rgba(59, 130, 246, 0.4); color: #bfdbfe; }
+    .manual-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .manual-card {
+      display: grid;
+      gap: 10px;
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    .manual-card strong {
+      font-size: 16px;
+      line-height: 1.4;
+      color: #e2e8f0;
+    }
+    .manual-index {
+      display: inline-flex;
+      width: fit-content;
+      min-width: 38px;
+      min-height: 34px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+      border-radius: 12px;
+      background: rgba(59, 130, 246, 0.2);
+      color: #bfdbfe;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+    .manual-list {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+    }
+    .manual-list li {
+      line-height: 1.7;
+    }
 
     .status-list { display: grid; gap: 8px; }
     .status-row, .status-item {
@@ -724,6 +1116,9 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
     }
+    .docker-journey-grid.wide {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
     .docker-step-card {
       display: grid;
       gap: 10px;
@@ -748,6 +1143,27 @@
       border-color: rgba(245, 158, 11, 0.45);
       background: rgba(245, 158, 11, 0.12);
       color: #fcd34d;
+    }
+    .docker-help-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .docker-help-card {
+      display: grid;
+      gap: 8px;
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      background: rgba(255, 255, 255, 0.03);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    .docker-help-card strong {
+      font-size: 15px;
+      color: #fff7ed;
+    }
+    .docker-help-card .subtle {
+      color: rgba(255, 237, 213, 0.84);
     }
 
     .terminal-notice-banner {
@@ -886,19 +1302,24 @@
     @media (max-width: 1024px) {
       body { overflow: auto; }
       .app-shell { flex-direction: column; }
+      .sidebar-resizer-shell { display: none; }
       .sidebar {
         width: 100%;
+        min-width: 100%;
+        flex-basis: auto;
         height: auto;
         border-right: 0;
         border-bottom: 1px solid var(--border);
       }
       .main-area { overflow: visible; }
       .container { padding: 20px 18px 40px; }
-      .hero-mini-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+      .hero-chip-band,
+      .hero-mini-grid,
+      .hero-status-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
     }
     @media (max-width: 880px) {
-      .docker-showcase, .docker-journey-grid { grid-template-columns: 1fr; }
-      .helper-grid, .grid-2, .grid-3, .schedule-grid, .schedule-preview { grid-template-columns: 1fr; }
+      .docker-showcase, .docker-journey-grid, .docker-journey-grid.wide, .manual-grid, .docker-help-grid { grid-template-columns: 1fr; }
+      .helper-grid, .grid-2, .grid-3, .schedule-grid, .schedule-preview, .hero-status-grid, .hero-chip-band { grid-template-columns: 1fr; }
       .schedule-banner { flex-direction: column; align-items: flex-start; }
       .output-dir-form { grid-template-columns: 1fr; }
       .hero-title-row { grid-template-columns: 1fr; }
@@ -907,10 +1328,13 @@
       .container { padding: 18px 14px 36px; }
       .hero { padding: 18px; border-radius: 18px; }
       .hero h1 { font-size: 22px; }
+      .hero-brand-lockup h1 { font-size: 38px; }
+      .hero-lead { font-size: 16px; }
       .step-head { flex-wrap: wrap; }
       .status-pill { margin-left: 0; }
       .step-body { padding-left: 0; }
       .result-item, .status-row, .between, .schedule-banner { flex-direction: column; align-items: flex-start; }
+      .hero-actions, .sidebar-link-actions { flex-direction: column; align-items: stretch; }
       .time-grid { grid-template-columns: 1fr; max-width: none; }
       .time-sep { display: none; }
     }
@@ -919,114 +1343,18 @@
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <img src="/static/brand/gzhreader-icon.svg" alt="GZHReader">
-        <div>
-          <div class="sidebar-title">GZHReader</div>
-          <div class="sidebar-subtitle">{{ '首次安装引导' if docker_blocked else '本地设置助手' }}</div>
-        </div>
-      </div>
-
-      <div class="sidebar-section">
-        <div class="hero-side">
-          <div class="hero-side-title">当前关键地址</div>
-          <div class="hero-metric">
-            <div class="kicker">聚合 RSS</div>
-            <code>{{ config.source.url }}</code>
-          </div>
-          <div class="hero-metric">
-            <div class="kicker">wewe-rss 后台</div>
-            <code>{{ config.wewe_rss.base_url }}</code>
-          </div>
-          <div class="hero-metric">
-            <div class="kicker">Markdown 输出目录</div>
-            <code>{{ briefing_dir_display }}</code>
-          </div>
-        </div>
-      </div>
-
-      {% if not docker_blocked %}
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">运行概览</div>
-        <div class="hero-mini-grid">
-          <div class="hero-mini-card">
-            <strong>{{ '已就绪' if status.environment_ready else '待检查' }}</strong>
-            <span>环境检查</span>
-          </div>
-          <div class="hero-mini-card">
-            <strong>{{ '运行中' if status.rss_service_ready else '未启动' }}</strong>
-            <span>RSS 服务</span>
-          </div>
-          <div class="hero-mini-card">
-            <strong>{{ '已填写' if status.llm_configured else '待配置' }}</strong>
-            <span>LLM 配置</span>
-          </div>
-        </div>
-      </div>
-      {% endif %}
-    </aside>
+    <aside id="sidebar-shell" class="sidebar">{% include "partials/sidebar.html" %}</aside>
+    <div class="sidebar-resizer-shell" aria-hidden="true">
+      <div id="sidebar-resizer" class="sidebar-resizer" role="separator" aria-orientation="vertical" aria-controls="sidebar-shell" aria-label="调整左侧栏宽度" tabindex="0"></div>
+    </div>
 
     <div class="main-area">
       <div class="container">
-        <section class="hero">
-          <div class="hero-copy">
-            <div class="eyebrow">{{ '首次安装引导' if docker_blocked else '本地设置助手' }}</div>
-            <div class="hero-title-row">
-              <img class="hero-logo" src="/static/brand/gzhreader-icon.svg" alt="GZHReader">
-              <div>
-                <h1>{{ '先准备 Docker Desktop，再继续 GZHReader' if docker_blocked else 'GZHReader 本地日报设置向导' }}</h1>
-                <p>
-                  {% if docker_blocked %}
-                    当前先把 Docker Desktop 装好并启动起来。等它就绪后，这个页面会自动切回正式向导，继续带你完成 RSS、LLM、计划任务和日报测试。
-                  {% else %}
-                    跟着这 8 个步骤完成设置后，程序就会自动读取 RSS、补抓正文、调用 LLM 生成总结，并输出 Markdown 日报。
-                  {% endif %}
-                </p>
-              </div>
-            </div>
-            <div class="hero-chip-row">
-              {% if docker_blocked %}
-                <div class="hero-chip">① 安装 Docker Desktop</div>
-                <div class="hero-chip">② 启动 Docker 引擎</div>
-                <div class="hero-chip">③ 回来点击“重新检测”</div>
-              {% else %}
-                <div class="hero-chip">聚合 RSS → 正文补抓 → LLM 总结</div>
-                <div class="hero-chip">默认只保留 Markdown 日报</div>
-                <div class="hero-chip">支持立即运行与每日自动运行</div>
-              {% endif %}
-            </div>
-          </div>
-        </section>
+        <div id="top-chrome">{% include "partials/top_chrome.html" %}</div>
 
-    {% if not docker_blocked %}
-    <div class="wewe-warning-banner">
-      <div class="wewe-warning-icon">
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </div>
-      <div>
-        <strong>WeWe RSS 掉线提示：</strong>受限于上游开源项目 Bug，使用过程中可能遇到端点掉线。为保险起见在每次使用前，请在 wewe-rss 后台重新扫码登录微信并且刷新RSS，点击“更新全部”。
-      </div>
-    </div>
-    {% endif %}
-
-    <div class="terminal-notice-banner">
-      <div class="terminal-notice-icon">
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
-        </svg>
-      </div>
-      <div>
-        <strong>运行提示</strong>
-        <div>{{ terminal_notice }}</div>
-      </div>
-    </div>
-
-    <div id="action-response" class="sr-only" aria-hidden="true"></div>
-    <div id="busy-banner" class="busy-banner" aria-live="polite"></div>
-    <div id="flash-area">{% include "partials/flash.html" %}</div>
+        <div id="action-response" class="sr-only" aria-hidden="true"></div>
+        <div id="busy-banner" class="busy-banner" aria-live="polite"></div>
+        <div id="flash-area">{% include "partials/flash.html" %}</div>
 
         <main id="main-shell" class="main-stack">{% include "partials/main_content.html" %}</main>
       </div>
@@ -1035,21 +1363,165 @@
   <script>
     (() => {
       const busyBanner = document.getElementById('busy-banner');
+      const storage = (() => {
+        try {
+          return window.localStorage;
+        } catch (_error) {
+          return null;
+        }
+      })();
+      const sidebarConfig = {
+        minWidth: 260,
+        maxWidth: 520,
+        defaultWidth: 300,
+        widthKey: 'gzhreader.sidebar.width',
+        sectionsKey: 'gzhreader.sidebar.sections',
+      };
+      const desktopSidebarMedia = window.matchMedia('(min-width: 1025px)');
       let pendingScrollRestore = null;
-      if (!busyBanner || !window.htmx) return;
-      const scrollRoot = document.querySelector('.main-area');
+      let dragState = null;
+
+      const getScrollContainer = () => document.querySelector('.main-area');
       const resolveScrollRoot = () => {
+        const scrollRoot = getScrollContainer();
         if (!scrollRoot) return null;
         return scrollRoot.scrollHeight > scrollRoot.clientHeight ? scrollRoot : null;
       };
-      const getScrollTop = () => (resolveScrollRoot() ? scrollRoot.scrollTop : window.scrollY);
-      const setScrollTop = (value) => {
+      const getScrollTop = () => {
+        const activeRoot = resolveScrollRoot();
+        return activeRoot ? activeRoot.scrollTop : window.scrollY;
+      };
+      const setScrollTop = (value, behavior = 'auto') => {
         const activeRoot = resolveScrollRoot();
         if (activeRoot) {
-          activeRoot.scrollTo({ top: value, behavior: 'auto' });
+          activeRoot.scrollTo({ top: value, behavior });
         } else {
-          window.scrollTo({ top: value, behavior: 'auto' });
+          window.scrollTo({ top: value, behavior });
         }
+      };
+      const readStoredNumber = (key, fallback) => {
+        if (!storage) return fallback;
+        const parsed = Number.parseInt(storage.getItem(key) || '', 10);
+        return Number.isFinite(parsed) ? parsed : fallback;
+      };
+      const writeStoredValue = (key, value) => {
+        if (!storage) return;
+        try {
+          storage.setItem(key, value);
+        } catch (_error) {
+        }
+      };
+      const readStoredJson = (key, fallback) => {
+        if (!storage) return fallback;
+        try {
+          const raw = storage.getItem(key);
+          return raw ? JSON.parse(raw) : fallback;
+        } catch (_error) {
+          return fallback;
+        }
+      };
+      const clampSidebarWidth = (value) => Math.min(sidebarConfig.maxWidth, Math.max(sidebarConfig.minWidth, value));
+      const applySidebarWidth = (value = readStoredNumber(sidebarConfig.widthKey, sidebarConfig.defaultWidth)) => {
+        document.documentElement.style.setProperty('--sidebar-width', `${clampSidebarWidth(value)}px`);
+      };
+      const storeSidebarWidth = (value) => {
+        writeStoredValue(sidebarConfig.widthKey, String(clampSidebarWidth(value)));
+      };
+      const readSidebarSectionStates = () => {
+        const states = readStoredJson(sidebarConfig.sectionsKey, {});
+        return states && typeof states === 'object' ? states : {};
+      };
+      const storeSidebarSectionState = (sectionId, isOpen) => {
+        const next = readSidebarSectionStates();
+        next[sectionId] = isOpen;
+        writeStoredValue(sidebarConfig.sectionsKey, JSON.stringify(next));
+      };
+      const applySidebarSectionStates = (root = document) => {
+        const states = readSidebarSectionStates();
+        for (const details of root.querySelectorAll('details[data-sidebar-section]')) {
+          const sectionId = details.dataset.sidebarSection;
+          if (!sectionId) continue;
+          details.open = Object.prototype.hasOwnProperty.call(states, sectionId) ? Boolean(states[sectionId]) : false;
+        }
+      };
+      const updateSidebarWidthFromPointer = (clientX) => {
+        if (!dragState || !desktopSidebarMedia.matches) return;
+        const nextWidth = clampSidebarWidth(dragState.startWidth + (clientX - dragState.startX));
+        applySidebarWidth(nextWidth);
+        storeSidebarWidth(nextWidth);
+      };
+      const stopSidebarDrag = () => {
+        if (!dragState) return;
+        dragState = null;
+        document.body.classList.remove('sidebar-dragging');
+      };
+      const bindSidebarResizer = () => {
+        const resizer = document.getElementById('sidebar-resizer');
+        if (!resizer || resizer.dataset.sidebarBound === 'true') return;
+
+        resizer.addEventListener('pointerdown', (event) => {
+          if (!desktopSidebarMedia.matches) return;
+          const sidebar = document.getElementById('sidebar-shell');
+          dragState = {
+            startX: event.clientX,
+            startWidth: sidebar?.getBoundingClientRect().width || readStoredNumber(sidebarConfig.widthKey, sidebarConfig.defaultWidth),
+          };
+          document.body.classList.add('sidebar-dragging');
+          if (typeof resizer.setPointerCapture === 'function') {
+            resizer.setPointerCapture(event.pointerId);
+          }
+          event.preventDefault();
+        });
+        window.addEventListener('pointermove', (event) => updateSidebarWidthFromPointer(event.clientX));
+        window.addEventListener('pointerup', stopSidebarDrag);
+        window.addEventListener('pointercancel', stopSidebarDrag);
+        resizer.addEventListener('keydown', (event) => {
+          if (!desktopSidebarMedia.matches) return;
+          const delta = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0;
+          if (!delta) return;
+          event.preventDefault();
+          const currentWidth = readStoredNumber(sidebarConfig.widthKey, sidebarConfig.defaultWidth);
+          const nextWidth = clampSidebarWidth(currentWidth + delta);
+          applySidebarWidth(nextWidth);
+          storeSidebarWidth(nextWidth);
+        });
+        resizer.dataset.sidebarBound = 'true';
+      };
+      const bindSidebarSections = (root = document) => {
+        applySidebarSectionStates(root);
+        for (const details of root.querySelectorAll('details[data-sidebar-section]')) {
+          if (details.dataset.sectionBound === 'true') continue;
+          details.addEventListener('toggle', () => {
+            const sectionId = details.dataset.sidebarSection;
+            if (!sectionId) return;
+            storeSidebarSectionState(sectionId, details.open);
+          });
+          details.dataset.sectionBound = 'true';
+        }
+      };
+      const scrollToTarget = (selector) => {
+        if (!selector) return;
+        const target = document.querySelector(selector);
+        if (!target) return;
+        const activeRoot = resolveScrollRoot();
+        if (activeRoot) {
+          const rootRect = activeRoot.getBoundingClientRect();
+          const targetRect = target.getBoundingClientRect();
+          const top = activeRoot.scrollTop + targetRect.top - rootRect.top - 18;
+          activeRoot.scrollTo({ top: Math.max(top, 0), behavior: 'smooth' });
+          return;
+        }
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      const bindScrollTargets = () => {
+        if (document.body.dataset.scrollBound === 'true') return;
+        document.body.addEventListener('click', (event) => {
+          const trigger = event.target.closest('[data-scroll-target]');
+          if (!trigger) return;
+          event.preventDefault();
+          scrollToTarget(trigger.dataset.scrollTarget || '');
+        });
+        document.body.dataset.scrollBound = 'true';
       };
 
       const defaultMessage = '正在处理，请稍候…';
@@ -1061,37 +1533,40 @@
         if (path.includes('/actions/start-rss')) return '正在启动 RSS 服务，请稍候。';
         return defaultMessage;
       };
-
       const showBusy = (message) => {
+        if (!busyBanner) return;
         busyBanner.textContent = message;
         busyBanner.classList.add('show');
       };
-
       const hideBusy = () => {
+        if (!busyBanner) return;
         busyBanner.textContent = '';
         busyBanner.classList.remove('show');
       };
-
-      document.body.addEventListener('htmx:beforeRequest', (event) => {
-        const path = event.detail?.pathInfo?.requestPath || '';
-        const trigger = event.detail?.elt;
-        const targetSelector = trigger?.getAttribute?.('hx-target') || trigger?.closest?.('form')?.getAttribute?.('hx-target') || '';
-        if (targetSelector === '#action-response') {
-          pendingScrollRestore = getScrollTop();
-        }
-        showBusy(messageByPath(path));
-      });
-      document.body.addEventListener('htmx:afterRequest', hideBusy);
-      document.body.addEventListener('htmx:responseError', hideBusy);
-      document.body.addEventListener('htmx:sendError', hideBusy);
-      document.body.addEventListener('htmx:afterSettle', () => {
-        if (pendingScrollRestore === null) return;
-        const restoreTop = pendingScrollRestore;
-        pendingScrollRestore = null;
-        window.requestAnimationFrame(() => {
-          setScrollTop(restoreTop);
+      const bindBusyBanner = () => {
+        if (!busyBanner || !window.htmx || document.body.dataset.busyBound === 'true') return;
+        document.body.addEventListener('htmx:beforeRequest', (event) => {
+          const path = event.detail?.pathInfo?.requestPath || '';
+          const trigger = event.detail?.elt;
+          const targetSelector = trigger?.getAttribute?.('hx-target') || trigger?.closest?.('form')?.getAttribute?.('hx-target') || '';
+          if (targetSelector === '#action-response') {
+            pendingScrollRestore = getScrollTop();
+          }
+          showBusy(messageByPath(path));
         });
-      });
+        document.body.addEventListener('htmx:afterRequest', hideBusy);
+        document.body.addEventListener('htmx:responseError', hideBusy);
+        document.body.addEventListener('htmx:sendError', hideBusy);
+        document.body.addEventListener('htmx:afterSettle', () => {
+          if (pendingScrollRestore === null) return;
+          const restoreTop = pendingScrollRestore;
+          pendingScrollRestore = null;
+          window.requestAnimationFrame(() => {
+            setScrollTop(restoreTop);
+          });
+        });
+        document.body.dataset.busyBound = 'true';
+      };
 
       const bindSchedulePreview = (root = document) => {
         const hourSelect = root.querySelector('#schedule-hour-select');
@@ -1106,7 +1581,7 @@
           const minute = String(minuteSelect.value ?? '').padStart(2, '0');
           const selectedOption = limitSelect.options[limitSelect.selectedIndex];
           const limitLabel = selectedOption?.dataset?.label || selectedOption?.text || '';
-          timePreview.textContent = `\u6bcf\u5929 ${hour}:${minute}`;
+          timePreview.textContent = `每天 ${hour}:${minute}`;
           limitPreview.textContent = limitLabel;
         };
 
@@ -1129,8 +1604,8 @@
             const showing = input.type === 'text';
             input.type = showing ? 'password' : 'text';
             toggle.setAttribute('aria-pressed', String(!showing));
-            toggle.innerHTML = showing 
-              ? '<svg class="eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke-width: 2; flex-shrink: 0;"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>' 
+            toggle.innerHTML = showing
+              ? '<svg class="eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke-width: 2; flex-shrink: 0;"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>'
               : '<svg class="eye-icon-slash" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke-width: 2; flex-shrink: 0;"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>';
             toggle.title = showing ? '显示 API Key' : '隐藏 API Key';
           });
@@ -1138,17 +1613,76 @@
         }
       };
 
-      bindSchedulePreview();
-      bindPasswordToggles();
-      document.body.addEventListener('htmx:afterSwap', (event) => {
-        const target = event.detail?.target;
-        if (target && (target.id === 'main-shell' || target.closest?.('#main-shell'))) {
-          bindSchedulePreview(target);
-          bindPasswordToggles(target);
-          return;
+      const bindCopyButtons = (root = document) => {
+        const buttons = root.querySelectorAll('[data-copy-text]');
+        for (const button of buttons) {
+          if (button.dataset.copyBound === 'true') continue;
+          button.addEventListener('click', async () => {
+            const copyText = button.dataset.copyText || '';
+            if (!copyText) return;
+
+            const resetLabel = button.dataset.copyLabel || button.textContent?.trim() || '复制';
+            button.dataset.copyLabel = resetLabel;
+
+            try {
+              if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(copyText);
+              } else {
+                const input = document.createElement('textarea');
+                input.value = copyText;
+                input.setAttribute('readonly', '');
+                input.style.position = 'absolute';
+                input.style.left = '-9999px';
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                document.body.removeChild(input);
+              }
+              button.textContent = button.dataset.copiedLabel || '已复制';
+              button.classList.add('copied');
+            } catch (_error) {
+              button.textContent = '复制失败';
+            }
+
+            const previousTimer = Number(button.dataset.copyTimer || '0');
+            if (previousTimer) {
+              window.clearTimeout(previousTimer);
+            }
+            const timerId = window.setTimeout(() => {
+              button.textContent = button.dataset.copyLabel || '复制';
+              button.classList.remove('copied');
+              button.dataset.copyTimer = '';
+            }, 1600);
+            button.dataset.copyTimer = String(timerId);
+          });
+          button.dataset.copyBound = 'true';
         }
-        bindSchedulePreview();
-        bindPasswordToggles();
+      };
+
+      const initializeUiBindings = (root = document) => {
+        applySidebarWidth();
+        bindSidebarResizer();
+        bindScrollTargets();
+        bindBusyBanner();
+        bindSidebarSections(root);
+        bindSchedulePreview(root);
+        bindPasswordToggles(root);
+        bindCopyButtons(root);
+      };
+
+      initializeUiBindings(document);
+      const handleSidebarMediaChange = () => {
+        stopSidebarDrag();
+        applySidebarWidth();
+      };
+      if (typeof desktopSidebarMedia.addEventListener === 'function') {
+        desktopSidebarMedia.addEventListener('change', handleSidebarMediaChange);
+      } else if (typeof desktopSidebarMedia.addListener === 'function') {
+        desktopSidebarMedia.addListener(handleSidebarMediaChange);
+      }
+
+      document.body.addEventListener('htmx:afterSwap', () => {
+        initializeUiBindings(document);
       });
     })();
   </script>

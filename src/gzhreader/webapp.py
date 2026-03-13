@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 import logging
+import os
 import re
 from urllib.parse import urlencode
 import webbrowser
@@ -384,6 +385,13 @@ class DashboardBackend:
         webbrowser.open(config.wewe_rss.base_url)
         return f"已尝试打开 {config.wewe_rss.base_url}。请在后台完成扫码登录和公众号订阅，然后回到这里点“刷新状态”。"
 
+    def open_output_dir(self) -> str:
+        config = self.load_config()
+        output_dir = Path(config.output.briefing_dir).expanduser().resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        _open_local_path(output_dir)
+        return f"已尝试打开 Markdown 输出目录：{output_dir}"
+
     def save_llm(
         self,
         *,
@@ -648,6 +656,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         run_hour: int = Form(...),
         run_minute: int = Form(...),
         daily_article_limit: str = Form(...),
+        action_title: str = Form("安装计划任务"),
     ):
         blocked = _block_if_docker_unavailable(request, "安装计划任务", step_id="schedule")
         if blocked is not None:
@@ -658,9 +667,9 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
                 run_minute=run_minute,
                 daily_article_limit=daily_article_limit,
             )
-            return _after_action(request, detail, "success", step_id="schedule", action_title="安装计划任务")
+            return _after_action(request, detail, "success", step_id="schedule", action_title=action_title)
         except Exception as exc:
-            return _after_action(request, f"安装计划任务失败：{exc}", "error", step_id="schedule", action_title="安装计划任务")
+            return _after_action(request, f"安装计划任务失败：{exc}", "error", step_id="schedule", action_title=action_title)
 
     @web.post("/actions/save-output-dir")
     def save_output_dir(request: Request, briefing_dir: str = Form(...)):
@@ -678,28 +687,43 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         except Exception as exc:
             return _after_action(request, f"打开目录选择器失败：{exc}", "error", step_id="output_dir", action_title="选择 Markdown 目录")
 
+    @web.post("/actions/open-output-dir")
+    def open_output_dir(request: Request):
+        try:
+            detail = request.app.state.backend.open_output_dir()
+            return _after_action(request, detail, "success", step_id="output_dir", action_title="打开 Markdown 目录")
+        except Exception as exc:
+            return _after_action(request, f"打开 Markdown 目录失败：{exc}", "error", step_id="output_dir", action_title="打开 Markdown 目录")
+
     @web.post("/actions/remove-schedule")
-    def remove_schedule_action(request: Request):
-        blocked = _block_if_docker_unavailable(request, "删除计划任务", scope="advanced")
-        if blocked is not None:
-            return blocked
+    def remove_schedule_action(
+        request: Request,
+        scope: str = Form("advanced"),
+        step_id: str | None = Form(None),
+        action_title: str = Form("删除计划任务"),
+    ):
         try:
             detail = request.app.state.backend.remove_schedule()
-            return _after_action(request, detail, "success", scope="advanced", action_title="删除计划任务")
+            return _after_action(request, detail, "success", step_id=step_id, scope=scope, action_title=action_title)
         except Exception as exc:
-            return _after_action(request, f"删除计划任务失败：{exc}", "error", scope="advanced", action_title="删除计划任务")
+            return _after_action(request, f"删除计划任务失败：{exc}", "error", step_id=step_id, scope=scope, action_title=action_title)
 
     @web.post("/actions/run-now")
-    def run_now(request: Request, target_date: str = Form(...)):
-        blocked = _block_if_docker_unavailable(request, "立即运行测试", step_id="run_once")
+    def run_now(
+        request: Request,
+        target_date: str = Form(...),
+        step_id: str | None = Form("run_once"),
+        action_title: str = Form("立即运行测试"),
+    ):
+        blocked = _block_if_docker_unavailable(request, action_title, step_id=step_id)
         if blocked is not None:
             return blocked
         try:
             detail_date = date.fromisoformat(target_date)
             ok, detail = request.app.state.backend.run_now(detail_date)
-            return _after_action(request, detail, "success" if ok else "warning", step_id="run_once", action_title="立即运行测试")
+            return _after_action(request, detail, "success" if ok else "warning", step_id=step_id, action_title=action_title)
         except Exception as exc:
-            return _after_action(request, f"立即运行失败：{exc}", "error", step_id="run_once", action_title="立即运行测试")
+            return _after_action(request, f"立即运行失败：{exc}", "error", step_id=step_id, action_title=action_title)
 
     @web.post("/actions/save-advanced")
     def save_advanced(request: Request, yaml_text: str = Form(...)):
@@ -895,6 +919,13 @@ def _choose_output_dir(initial_dir: str) -> str | None:
     finally:
         root.destroy()
     return selected or None
+
+
+def _open_local_path(path: Path) -> None:
+    if hasattr(os, "startfile"):
+        os.startfile(str(path))  # type: ignore[attr-defined]
+        return
+    webbrowser.open(path.resolve().as_uri())
 
 
 def _split_daily_time(value: str) -> tuple[int, int]:

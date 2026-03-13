@@ -1,0 +1,120 @@
+<section class="hero hero-centered">
+  <div class="hero-copy hero-copy-centered">
+    {% if docker_blocked %}
+      <div class="eyebrow hero-eyebrow">{{ '首次安装引导' if docker_blocked else '本地设置助手' }}</div>
+    {% endif %}
+
+    <div class="hero-brand-lockup">
+      <img class="hero-logo hero-logo-xl" src="/static/brand/gzhreader-icon.svg" alt="GZHReader">
+      <h1>GZHReader</h1>
+    </div>
+
+    <div class="hero-chip-band">
+      {% if docker_blocked %}
+        <div class="hero-chip hero-chip-wide">先安装 Docker Desktop</div>
+        <div class="hero-chip hero-chip-wide">补齐 WSL2 / Windows 功能</div>
+        <div class="hero-chip hero-chip-wide">等待 Engine running 后回来检测</div>
+      {% else %}
+        <div class="hero-chip hero-chip-wide">聚合 RSS → 正文补抓 → LLM 总结</div>
+        <div class="hero-chip hero-chip-wide">默认只保留 Markdown 日报</div>
+        <div class="hero-chip hero-chip-wide">支持立即运行与每日自动运行</div>
+      {% endif %}
+    </div>
+
+    <p class="hero-lead">
+      {% if docker_blocked %}
+        当前先把 Docker Desktop 装好并启动起来。等它就绪后，这个页面会自动切回正式向导，继续带你完成 RSS、LLM、计划任务和日报测试。
+      {% else %}
+        跟着这 8 个步骤完成设置后，程序就会自动读取 RSS、补抓正文、调用 LLM 生成总结，并输出 Markdown 日报。
+      {% endif %}
+    </p>
+
+    {% if not docker_blocked %}
+      <div class="hero-primary-actions">
+        <button class="button hero-primary-button" type="button" data-scroll-target="#wizard-shell">开始设置</button>
+      </div>
+
+      <div class="hero-actions hero-actions-secondary">
+        <form method="post" action="/actions/run-now" hx-post="/actions/run-now" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
+          <input type="hidden" name="target_date" value="{{ today }}">
+          <input type="hidden" name="step_id" value="run_once">
+          <input type="hidden" name="action_title" value="立即抓取今天">
+          <button class="secondary" type="submit" hx-disabled-elt="this">立即抓取今天 <span class="htmx-indicator">可能需要 5-10 分钟...</span></button>
+        </form>
+        <a class="button light" href="/briefings/latest">查看最新日报</a>
+        <form method="post" action="/actions/open-wewe-rss" hx-post="/actions/open-wewe-rss" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
+          <button class="secondary" type="submit" hx-disabled-elt="this">打开 wewe-rss 后台 <span class="htmx-indicator">处理中...</span></button>
+        </form>
+      </div>
+
+      <div class="hero-status-grid">
+        <article class="hero-status-card">
+          <div class="hero-side-title">最近日报</div>
+          <strong>{{ latest_briefing.date_text if latest_briefing else '还没有生成日报' }}</strong>
+          <span>
+            {% if latest_briefing %}
+              直接打开最近一次生成的 Markdown 结果，快速检查今天是否已经抓取成功。
+            {% else %}
+              点上面的“立即抓取今天”，或者去第 7 步补跑任意日期。
+            {% endif %}
+          </span>
+          <div class="sidebar-link-actions">
+            <a class="button light" href="/briefings/latest">查看结果</a>
+          </div>
+        </article>
+
+        <article class="hero-status-card">
+          <div class="hero-side-title">结果位置</div>
+          <strong>Markdown 输出目录</strong>
+          <code>{{ briefing_dir_display }}</code>
+          <span>日报会以 <code>YYYY-MM-DD.md</code> 的形式保存在这里，方便你直接打开或同步到其他工具。</span>
+          <div class="sidebar-link-actions">
+            <form method="post" action="/actions/open-output-dir" hx-post="/actions/open-output-dir" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
+              <button class="secondary" type="submit" hx-disabled-elt="this">打开目录 <span class="htmx-indicator">处理中...</span></button>
+            </form>
+          </div>
+        </article>
+
+        <article class="hero-status-card">
+          <div class="hero-side-title">每日任务</div>
+          <strong>{{ '已开启自动抓取' if status.schedule_installed else '还没有开启自动抓取' }}</strong>
+          <span>
+            {% if status.schedule_installed %}
+              当前会按本机时间每天 {{ '%02d' % schedule_hour }}:{{ '%02d' % schedule_minute }} 运行，{{ status.daily_article_limit_label }}。
+            {% else %}
+              完成第 6 步后，这台电脑就会在你设定的时间自动抓取并生成日报。
+            {% endif %}
+          </span>
+          <div class="sidebar-link-actions">
+            <button class="button light" type="button" data-scroll-target="#wizard-step-schedule">去设置</button>
+          </div>
+        </article>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if not docker_blocked %}
+  <div class="wewe-warning-banner">
+    <div class="wewe-warning-icon">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    </div>
+    <div>
+      <strong>WeWe RSS 掉线提示：</strong>受限于上游开源项目 Bug，使用过程中可能遇到端点掉线。为保险起见在每次使用前，请在 wewe-rss 后台重新扫码登录微信并且刷新 RSS，点击“更新全部”。
+    </div>
+  </div>
+{% endif %}
+
+<div class="terminal-notice-banner">
+  <div class="terminal-notice-icon">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
+    </svg>
+  </div>
+  <div>
+    <strong>运行提示</strong>
+    <div>{{ terminal_notice }}</div>
+  </div>
+</div>

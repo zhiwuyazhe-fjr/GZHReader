@@ -96,17 +96,11 @@ class WeWeRSSManager:
         sqlite_path = self.service_dir / "docker-compose.sqlite.yml"
         mysql_path = self.service_dir / "docker-compose.mysql.yml"
         active_path = self.service_dir / "docker-compose.yml"
+        env_text = self._render_env_text()
 
-        if force or not env_path.exists():
-            env_path.write_text(
-                ENV_TEMPLATE.format(
-                    image=self.config.image,
-                    auth_code=self.config.auth_code,
-                    server_origin_url=self.config.server_origin_url,
-                    port=self.config.port,
-                ),
-                encoding="utf-8",
-            )
+        current_env_text = env_path.read_text(encoding="utf-8") if env_path.exists() else None
+        if force or current_env_text != env_text:
+            env_path.write_text(env_text, encoding="utf-8")
 
         sqlite_path.write_text(SQLITE_COMPOSE, encoding="utf-8")
         mysql_path.write_text(MYSQL_COMPOSE, encoding="utf-8")
@@ -114,6 +108,14 @@ class WeWeRSSManager:
         selected = sqlite_path if self.config.compose_variant == "sqlite" else mysql_path
         active_path.write_text(selected.read_text(encoding="utf-8"), encoding="utf-8")
         return [env_path, sqlite_path, mysql_path, active_path]
+
+    def _render_env_text(self) -> str:
+        return ENV_TEMPLATE.format(
+            image=self.config.image,
+            auth_code=self.config.auth_code,
+            server_origin_url=self.config.server_origin_url,
+            port=self.config.port,
+        )
 
     def check_docker(self) -> tuple[bool, str]:
         try:

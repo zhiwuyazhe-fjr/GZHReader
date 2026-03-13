@@ -9,29 +9,31 @@
       <div class="detail-box">{{ docker_setup.detail }}</div>
       <div class="docker-actions">
         <a class="button warn" href="{{ docker_setup.download_url }}" target="_blank" rel="noreferrer">下载 Docker Desktop</a>
-        <a class="button light" href="{{ docker_setup.install_url }}" target="_blank" rel="noreferrer">查看安装说明</a>
+        <a class="button light" href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noreferrer">查看 WSL 安装说明</a>
+        <a class="button light" href="{{ docker_setup.install_url }}" target="_blank" rel="noreferrer">Docker 官方文档</a>
+        <a class="button light" href="https://docs.docker.com/desktop/features/wsl/" target="_blank" rel="noreferrer">Docker + WSL 指南</a>
         <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
           <button class="ghost" type="submit" hx-disabled-elt="this">重新检测 <span class="htmx-indicator">检测中...</span></button>
         </form>
       </div>
-      <div class="docker-footnote">上面两个链接都会在新页面打开。先按官方文档完成安装，再回到这里继续。</div>
+      <div class="docker-footnote">这里说的 Linux 环境通常就是 WSL2，不是让你重装双系统。按官方提示启用 Windows 功能并安装一个 Linux 发行版就可以。</div>
     </div>
 
     <div class="docker-showcase-card docker-trust-card">
-      <div class="docker-trust-title">为什么这一步值得继续做</div>
-      <div class="docker-trust-copy">Docker Desktop 只负责把 RSS 服务稳定地跑在你的本机里。装好之后，后面的 RSS、LLM、计划任务和日报导出都可以直接在这个界面继续完成。</div>
+      <div class="docker-trust-title">装好 Docker 之后，后面的步骤会简单很多</div>
+      <div class="docker-trust-copy">GZHReader 只把 Docker 用在本地启动 RSS 服务。Docker 就绪后，这个页面会自动切回正式向导，你继续在这里完成 RSS 登录、LLM 配置、定时任务和日报测试即可。</div>
       <div class="docker-trust-list">
         <div class="docker-trust-item">
-          <strong>官方来源</strong>
-          <span>下载按钮直达 Docker 官方 Windows 安装文档。</span>
+          <strong>只需要装一次</strong>
+          <span>后续升级 GZHReader 时，通常不需要重新折腾 Docker 安装环境。</span>
         </div>
         <div class="docker-trust-item">
-          <strong>首次安装即可复用</strong>
-          <span>后续升级 GZHReader 时通常不需要重新配置 Docker。</span>
+          <strong>官方链接都在这里</strong>
+          <span>下载、WSL、Docker Desktop 文档都指向官方页面，不需要你自己额外搜索。</span>
         </div>
         <div class="docker-trust-item">
-          <strong>过程中可能会弹出系统窗口</strong>
-          <span>安装或后续启动服务时，如果短暂打开浏览器、终端或系统确认窗口，都属于正常行为。</span>
+          <strong>弹出系统窗口属于正常现象</strong>
+          <span>安装、首次启动或后续拉起服务时，偶尔会出现浏览器、终端或确认窗口，不需要紧张。</span>
         </div>
       </div>
     </div>
@@ -40,30 +42,68 @@
   <div class="panel docker-journey-panel">
     <div class="between" style="align-items: flex-start; margin-bottom: 18px;">
       <div>
-        <h3 class="panel-title" style="font-size: 24px; margin-bottom: 8px;">三步完成首次安装</h3>
-        <div class="subtle">整个过程通常只需要几分钟。完成后，这个页面会恢复成正式的 8 步设置向导。</div>
+        <h3 class="panel-title" style="font-size: 24px; margin-bottom: 8px;">按这 5 步完成 Windows 首次安装</h3>
+        <div class="subtle">很多用户卡在“Docker 下载完了，但还不能启动”。问题通常不是下载按钮，而是 Windows 还没有准备好 WSL2 或虚拟化环境。</div>
       </div>
-      <div class="docker-path-pill">安装完成后无需留在 Docker 官网</div>
+      <div class="docker-path-pill">完成后回到这里点击“重新检测”</div>
     </div>
 
-    <div class="docker-journey-grid">
+    <div class="docker-journey-grid wide">
       <div class="check-item docker-step-card">
         <div class="docker-step-no">01</div>
-        <strong>打开官方 Windows 安装页</strong>
-        <div class="subtle">点击“下载 Docker Desktop”后会新开浏览器页面，直接跟随 Docker 官方步骤下载和安装。</div>
+        <strong>下载 Docker Desktop</strong>
+        <div class="subtle">点击上面的官方下载按钮，先把 Windows 版本安装包跑起来。</div>
       </div>
       <div class="check-item docker-step-card">
         <div class="docker-step-no">02</div>
-        <strong>启动 Docker Desktop 并等待引擎就绪</strong>
-        <div class="subtle">首次启动通常稍慢。等到 Docker Desktop 显示 Engine running 或类似“已就绪”状态即可。</div>
+        <strong>确认电脑已开启虚拟化</strong>
+        <div class="subtle">如果提示无法启用虚拟机，通常要去 BIOS / UEFI 打开 Intel VT-x、AMD-V 或 SVM。</div>
       </div>
       <div class="check-item docker-step-card">
         <div class="docker-step-no">03</div>
-        <strong>回到 GZHReader 继续配置</strong>
-        <div class="subtle">点击“重新检测”后，如果 Docker 已就绪，页面会自动切回正式向导，继续启动 <code>wewe-rss-app</code> 和 <code>mysql</code>。</div>
+        <strong>启用 WSL2 / Virtual Machine Platform</strong>
+        <div class="subtle">按照 Docker 或微软提示，打开“启用或关闭 Windows 功能”，勾选 <code>WSL</code> 和 <code>Virtual Machine Platform</code>。</div>
+      </div>
+      <div class="check-item docker-step-card">
+        <div class="docker-step-no">04</div>
+        <strong>安装 Linux 发行版或更新 WSL 内核</strong>
+        <div class="subtle">如果提示缺少 Linux 环境，按微软文档安装一个 Ubuntu 等发行版，或更新 WSL 内核后再启动 Docker。</div>
+      </div>
+      <div class="check-item docker-step-card">
+        <div class="docker-step-no">05</div>
+        <strong>重启电脑并等待 Engine running</strong>
+        <div class="subtle">首次安装后建议重启一次。重新打开 Docker Desktop，等它显示 <code>Engine running</code> 再回到 GZHReader。</div>
       </div>
     </div>
 
     <div class="detail-box docker-next-step" style="margin-top: 18px;">{{ docker_setup.next_step }}</div>
+  </div>
+
+  <div class="panel docker-journey-panel">
+    <div class="between" style="align-items: flex-start; margin-bottom: 18px;">
+      <div>
+        <h3 class="panel-title" style="font-size: 22px; margin-bottom: 8px;">常见卡点</h3>
+        <div class="subtle">如果你已经下载安装过 Docker，但这个页面仍然提示不可用，通常是下面几种情况。</div>
+      </div>
+    </div>
+
+    <div class="docker-help-grid">
+      <div class="docker-help-card">
+        <strong>下载完还不能用</strong>
+        <div class="subtle">先确认 Docker Desktop 本体已经安装完成，并且桌面程序真正启动了。只下载了安装包但没有继续安装，GZHReader 仍然会检测不到 Docker。</div>
+      </div>
+      <div class="docker-help-card">
+        <strong>提示缺少 Linux / WSL</strong>
+        <div class="subtle">这是最常见的首次安装问题。按微软的 WSL 官方文档安装 Linux 发行版，或更新 WSL 内核后再打开 Docker Desktop。</div>
+      </div>
+      <div class="docker-help-card">
+        <strong>提示需要修改 Windows 高级功能</strong>
+        <div class="subtle">去“启用或关闭 Windows 功能”里勾选 <code>适用于 Linux 的 Windows 子系统</code> 和 <code>虚拟机平台</code>，然后按提示重启电脑。</div>
+      </div>
+      <div class="docker-help-card">
+        <strong>启动后一直不 ready</strong>
+        <div class="subtle">如果 Docker Desktop 长时间卡在 starting，先重启电脑；仍不行时再检查 BIOS 的虚拟化开关是否打开，以及 WSL 是否可正常运行。</div>
+      </div>
+    </div>
   </div>
 </section>
