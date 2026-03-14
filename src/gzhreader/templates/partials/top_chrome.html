@@ -1,4 +1,4 @@
-<section class="hero hero-centered">
+<section class="hero hero-centered" data-docker-blocked-state="{{ 'true' if docker_blocked else 'false' }}">
   <div class="hero-copy hero-copy-centered">
     {% if docker_blocked %}
       <div class="eyebrow hero-eyebrow">{{ '首次安装引导' if docker_blocked else '本地设置助手' }}</div>
@@ -101,20 +101,13 @@
         <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     </div>
-    <div>
-      <strong>WeWe RSS 掉线提示：</strong>受限于上游开源项目 Bug，使用过程中可能遇到端点掉线。为保险起见在每次使用前，请在 wewe-rss 后台重新扫码登录微信并且刷新 RSS，点击“更新全部”。
+    <div class="wewe-warning-copy">
+      <div class="wewe-warning-line">
+        <strong>WeWe RSS 掉线提示：</strong>受限于上游开源项目 Bug，使用过程中可能遇到端点掉线。为保险起见在每次使用前，请在 wewe-rss 后台重新扫码登录微信并且刷新 RSS，点击“更新全部”。
+      </div>
+      <div class="wewe-warning-line">
+        <strong>运行提示：</strong>{{ terminal_notice }}
+      </div>
     </div>
   </div>
 {% endif %}
-
-<div class="terminal-notice-banner">
-  <div class="terminal-notice-icon">
-    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
-    </svg>
-  </div>
-  <div>
-    <strong>运行提示</strong>
-    <div>{{ terminal_notice }}</div>
-  </div>
-</div>

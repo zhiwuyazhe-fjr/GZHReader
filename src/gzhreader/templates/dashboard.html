@@ -60,6 +60,13 @@
       background: var(--bg);
       align-items: stretch;
     }
+    .app-shell.app-shell-docker-blocked .sidebar,
+    .app-shell.app-shell-docker-blocked .sidebar-resizer-shell {
+      display: none;
+    }
+    .app-shell.app-shell-docker-blocked .main-area {
+      width: 100%;
+    }
     .sidebar {
       width: var(--sidebar-width);
       min-width: var(--sidebar-width);
@@ -71,6 +78,32 @@
       flex-direction: column;
       gap: 20px;
       overflow-y: auto;
+    }
+    .sidebar,
+    .main-area {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.26) transparent;
+    }
+    .sidebar::-webkit-scrollbar,
+    .main-area::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    .sidebar::-webkit-scrollbar-track,
+    .main-area::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .sidebar::-webkit-scrollbar-thumb,
+    .main-area::-webkit-scrollbar-thumb {
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.22);
+      background-clip: padding-box;
+    }
+    .sidebar:hover::-webkit-scrollbar-thumb,
+    .main-area:hover::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.32);
+      background-clip: padding-box;
     }
     .sidebar-resizer-shell {
       flex: 0 0 14px;
@@ -156,18 +189,18 @@
     }
     .sidebar-status-list {
       display: grid;
-      gap: 12px;
+      gap: 10px;
     }
     .sidebar-status-card {
       width: 100%;
-      min-height: 112px;
-      padding: 18px 16px;
-      border-radius: 22px;
+      min-height: 96px;
+      padding: 16px 15px;
+      border-radius: 20px;
       border: 1px solid rgba(59, 130, 246, 0.18);
       background: linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(10, 10, 10, 0.92));
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 38px -30px rgba(59, 130, 246, 0.45);
       display: grid;
-      gap: 10px;
+      gap: 6px;
       align-content: center;
       justify-items: start;
       text-align: left;
@@ -182,16 +215,16 @@
       box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35), 0 0 0 4px rgba(59, 130, 246, 0.22);
     }
     .sidebar-status-state {
-      font-size: 32px;
+      font-size: 28px;
       line-height: 1.05;
       font-weight: 700;
       letter-spacing: -0.03em;
       color: #f8fbff;
     }
     .sidebar-status-label {
-      font-size: 18px;
+      font-size: 16px;
       color: #dbeafe;
-      line-height: 1.35;
+      line-height: 1.3;
     }
     .sidebar-entry-list {
       display: grid;
@@ -1061,8 +1094,38 @@
       font-size: 13px;
       font-weight: 700;
     }
-    .docker-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
-    .docker-footnote { font-size: 13px; color: #fcd34d; line-height: 1.7; }
+    .docker-actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .docker-actions-row {
+      display: grid;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .docker-actions-row-primary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .docker-actions-row-secondary {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .docker-actions-row > *,
+    .docker-actions-row form {
+      min-width: 0;
+      width: 100%;
+    }
+    .docker-actions-row form {
+      display: flex;
+      margin: 0;
+    }
+    .docker-actions-row .button,
+    .docker-actions-row button {
+      width: 100%;
+    }
+    .docker-actions-row form button {
+      flex: 1;
+    }
     .docker-trust-card {
       background: linear-gradient(180deg, #0b0b0b 0%, #111827 100%);
       border-color: rgba(59, 130, 246, 0.2);
@@ -1166,36 +1229,6 @@
       color: rgba(255, 237, 213, 0.84);
     }
 
-    .terminal-notice-banner {
-      display: flex;
-      align-items: flex-start;
-      gap: 14px;
-      margin-bottom: 24px;
-      padding: 18px 20px;
-      border-radius: 20px;
-      border: 1px solid rgba(59, 130, 246, 0.35);
-      background: rgba(59, 130, 246, 0.08);
-      color: #c7d2fe;
-      box-shadow: var(--shadow-sm);
-    }
-    .terminal-notice-icon {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 34px;
-      height: 34px;
-      border-radius: 12px;
-      background: rgba(59, 130, 246, 0.85);
-      color: #0b0b0b;
-    }
-    .terminal-notice-banner strong {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 15px;
-      color: #e0e7ff;
-    }
-
     .advanced summary { cursor: pointer; font-weight: 700; }
     details.panel summary { cursor: pointer; list-style: none; font-weight: 700; }
     details.panel summary::-webkit-details-marker { display: none; }
@@ -1251,7 +1284,7 @@
 
     .wewe-warning-banner {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 14px;
       margin-bottom: 24px;
       padding: 16px 20px;
@@ -1266,6 +1299,13 @@
     .wewe-warning-banner strong {
       color: #fbbf24;
       font-weight: 600;
+    }
+    .wewe-warning-copy {
+      display: grid;
+      gap: 10px;
+    }
+    .wewe-warning-line {
+      color: inherit;
     }
     .wewe-warning-icon {
       flex: 0 0 auto;
@@ -1319,6 +1359,7 @@
     }
     @media (max-width: 880px) {
       .docker-showcase, .docker-journey-grid, .docker-journey-grid.wide, .manual-grid, .docker-help-grid { grid-template-columns: 1fr; }
+      .docker-actions-row-primary, .docker-actions-row-secondary { grid-template-columns: 1fr; }
       .helper-grid, .grid-2, .grid-3, .schedule-grid, .schedule-preview, .hero-status-grid, .hero-chip-band { grid-template-columns: 1fr; }
       .schedule-banner { flex-direction: column; align-items: flex-start; }
       .output-dir-form { grid-template-columns: 1fr; }
@@ -1342,7 +1383,7 @@
 
 </head>
 <body>
-  <div class="app-shell">
+  <div class="app-shell{% if docker_blocked %} app-shell-docker-blocked{% endif %}">
     <aside id="sidebar-shell" class="sidebar">{% include "partials/sidebar.html" %}</aside>
     <div class="sidebar-resizer-shell" aria-hidden="true">
       <div id="sidebar-resizer" class="sidebar-resizer" role="separator" aria-orientation="vertical" aria-controls="sidebar-shell" aria-label="调整左侧栏宽度" tabindex="0"></div>
@@ -1659,7 +1700,15 @@
         }
       };
 
+      const syncDockerBlockedLayout = () => {
+        const appShell = document.querySelector('.app-shell');
+        const stateNode = document.querySelector('#top-chrome [data-docker-blocked-state]');
+        if (!appShell || !stateNode) return;
+        appShell.classList.toggle('app-shell-docker-blocked', stateNode.dataset.dockerBlockedState === 'true');
+      };
+
       const initializeUiBindings = (root = document) => {
+        syncDockerBlockedLayout();
         applySidebarWidth();
         bindSidebarResizer();
         bindScrollTargets();

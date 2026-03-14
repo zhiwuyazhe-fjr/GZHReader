@@ -8,15 +8,18 @@
       </div>
       <div class="detail-box">{{ docker_setup.detail }}</div>
       <div class="docker-actions">
-        <a class="button warn" href="{{ docker_setup.download_url }}" target="_blank" rel="noreferrer">下载 Docker Desktop</a>
-        <a class="button light" href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noreferrer">查看 WSL 安装说明</a>
-        <a class="button light" href="{{ docker_setup.install_url }}" target="_blank" rel="noreferrer">Docker 官方文档</a>
-        <a class="button light" href="https://docs.docker.com/desktop/features/wsl/" target="_blank" rel="noreferrer">Docker + WSL 指南</a>
-        <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
-          <button class="ghost" type="submit" hx-disabled-elt="this">重新检测 <span class="htmx-indicator">检测中...</span></button>
-        </form>
+        <div class="docker-actions-row docker-actions-row-primary">
+          <a class="button warn" href="{{ docker_setup.download_url }}" target="_blank" rel="noreferrer">下载 Docker Desktop</a>
+          <form method="get" action="/actions/refresh" hx-get="/actions/refresh" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
+            <button class="ghost" type="submit" hx-disabled-elt="this">重新检测 <span class="htmx-indicator">检测中...</span></button>
+          </form>
+        </div>
+        <div class="docker-actions-row docker-actions-row-secondary">
+          <a class="button light" href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noreferrer">查看 WSL 安装说明</a>
+          <a class="button light" href="{{ docker_setup.install_url }}" target="_blank" rel="noreferrer">Docker 官方文档</a>
+          <a class="button light" href="https://docs.docker.com/desktop/features/wsl/" target="_blank" rel="noreferrer">Docker + WSL 指南</a>
+        </div>
       </div>
-      <div class="docker-footnote">这里说的 Linux 环境通常就是 WSL2，不是让你重装双系统。按官方提示启用 Windows 功能并安装一个 Linux 发行版就可以。</div>
     </div>
 
     <div class="docker-showcase-card docker-trust-card">

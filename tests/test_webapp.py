@@ -202,8 +202,11 @@ def test_dashboard_homepage_renders_docker_setup_when_blocked() -> None:
     response = client.get("/")
 
     assert response.status_code == 200
+    assert 'class="app-shell app-shell-docker-blocked"' in response.text
     assert "下载 Docker Desktop" in response.text
     assert "这台电脑还没有安装 Docker Desktop" in response.text
+    assert "准备就绪。建议从第 1 步开始" not in response.text
+    assert "运行提示：" not in response.text
     assert "分步向导" not in response.text
 
 
@@ -321,6 +324,19 @@ def test_hero_renders_primary_setup_cta_and_schedule_jump() -> None:
     assert "支持立即运行与每日自动运行" in response.text
     assert 'data-scroll-target="#wizard-step-schedule"' in response.text
     assert "去设置" in response.text
+
+
+def test_dashboard_merges_wewe_and_terminal_notices_into_one_warning_banner() -> None:
+    client = TestClient(create_app(backend=FakeBackend()))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.text.count('<div class="wewe-warning-banner">') == 1
+    assert "WeWe RSS 掉线提示：" in response.text
+    assert "运行提示：" in response.text
+    assert "程序可能会短暂打开终端或系统窗口" in response.text
+    assert "terminal-notice-banner" not in response.text
 
 
 def test_schedule_step_shows_stateful_actions_when_not_installed() -> None:
@@ -524,14 +540,16 @@ def test_docker_setup_partial_contains_official_links_and_wsl_guidance() -> None
     response = client.get("/partials/docker-setup")
 
     assert response.status_code == 200
+    assert 'class="docker-actions-row docker-actions-row-primary"' in response.text
+    assert 'class="docker-actions-row docker-actions-row-secondary"' in response.text
     assert 'href="https://docs.docker.com/desktop/setup/install/windows-install/"' in response.text
     assert 'href="https://docs.docker.com/desktop/"' in response.text
     assert 'href="https://learn.microsoft.com/windows/wsl/install"' in response.text
     assert 'href="https://docs.docker.com/desktop/features/wsl/"' in response.text
-    assert "WSL2" in response.text
     assert "Virtual Machine Platform" in response.text
     assert "Linux 发行版" in response.text
     assert "Engine running" in response.text
+    assert "不是让你重装双系统" not in response.text
 
 
 def test_dashboard_mentions_terminal_window_notice() -> None:
