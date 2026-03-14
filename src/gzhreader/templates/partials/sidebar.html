@@ -104,3 +104,114 @@
     </details>
   </div>
 </div>
+
+{% if not docker_blocked %}
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">帮助中心</div>
+    <details class="sidebar-entry-card sidebar-help-card" data-sidebar-section="help-center">
+      <summary class="sidebar-entry-summary">
+        <span>
+          <span class="sidebar-link-kicker">理解容器角色</span>
+          <strong>先理解两件事</strong>
+        </span>
+      </summary>
+      <div class="sidebar-entry-body sidebar-help-body">
+        <div class="subtle sidebar-help-intro">你看到的两个容器不是两个项目，而是同一个 RSS 服务的两个组成部分。普通用户只要按向导操作，不需要再理解 Docker Compose。</div>
+        <div class="sidebar-help-grid">
+          <article class="sidebar-help-mini-card">
+            <strong><code>wewe-rss-app</code></strong>
+            <span>把你添加的公众号内容转成 RSS，后续 GZHReader 直接读取这个聚合源。</span>
+          </article>
+          <article class="sidebar-help-mini-card">
+            <strong><code>mysql</code></strong>
+            <span>负责保存登录态、订阅记录和服务数据，不是多余容器。</span>
+          </article>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="sidebar-section sidebar-footer-section">
+    <button class="button light sidebar-about-button" type="button" data-open-dialog="about-dialog">关于</button>
+    <dialog id="about-dialog" class="about-dialog">
+      <div class="about-dialog-card">
+        <div class="about-dialog-hero">
+          <div class="about-dialog-head">
+            <div class="about-dialog-brand">
+              <img src="/static/brand/gzhreader-icon.svg" alt="GZHReader">
+              <div class="about-dialog-brand-copy">
+                <div class="about-dialog-title-row">
+                  <div class="about-dialog-title">GZHReader</div>
+                  <span class="about-dialog-version-badge">{{ app_version }}</span>
+                </div>
+                <div class="about-dialog-subtitle">{{ about_tagline }}</div>
+              </div>
+            </div>
+            <form method="dialog">
+              <button class="button light about-dialog-close" type="submit" data-close-dialog="about-dialog">关闭</button>
+            </form>
+          </div>
+        </div>
+        <div class="about-dialog-sections">
+          <section class="about-dialog-section">
+            <div class="about-dialog-section-title">😘 开发动机</div>
+            <p class="about-dialog-section-copy">{{ about_motivation_text }}</p>
+          </section>
+
+          <section class="about-dialog-section">
+            <div class="about-dialog-section-title">💬 反馈</div>
+            <div class="about-dialog-actions">
+              <button
+                class="button secondary about-dialog-full-button"
+                type="button"
+                data-about-placeholder-trigger
+                data-placeholder-target="about-feature-suggestion-note"
+                data-placeholder-message="{{ about_feature_suggestion_placeholder }}"
+              >
+                功能建议
+              </button>
+              <a class="button light about-dialog-full-button" href="{{ about_feedback_issue_url }}" target="_blank" rel="noreferrer">问题反馈 / 支持</a>
+            </div>
+            <div id="about-feature-suggestion-note" class="about-dialog-inline-note" aria-live="polite"></div>
+          </section>
+
+          <section class="about-dialog-section">
+            <div class="about-dialog-section-title">🌱 开源项目</div>
+            <div class="about-dialog-linkline">{{ about_repo_url }}</div>
+            <a class="button light about-dialog-full-button" href="{{ about_repo_url }}" target="_blank" rel="noreferrer">GitHub 仓库入口</a>
+          </section>
+
+          <section class="about-dialog-section">
+            <div class="about-dialog-section-title">💕 支持项目</div>
+            <p class="about-dialog-section-copy">{{ about_support_text }}</p>
+            <button
+              class="button secondary copy-button about-dialog-full-button"
+              type="button"
+              data-copy-text="{{ about_repo_url }}"
+              data-copied-label="已复制仓库链接"
+            >
+              分享给朋友
+            </button>
+          </section>
+
+          <section class="about-dialog-section">
+            <div class="about-dialog-section-title">👨‍💻 关于作者</div>
+            <div class="about-dialog-author-name">{{ about_author_name }}</div>
+            <div class="about-dialog-author-lines">
+              {% for line in about_author_lines %}
+                <div>{{ line }}</div>
+              {% endfor %}
+            </div>
+            <a class="button light about-dialog-full-button" href="{{ about_author_github_url }}" target="_blank" rel="noreferrer">作者的主页</a>
+          </section>
+        </div>
+
+        <div class="about-dialog-footer">
+          {% for line in about_footer_lines %}
+            <div>{{ line }}</div>
+          {% endfor %}
+        </div>
+      </div>
+    </dialog>
+  </div>
+{% endif %}

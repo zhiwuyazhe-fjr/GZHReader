@@ -58,7 +58,7 @@
               点上面的“立即抓取今天”，或者去第 7 步补跑任意日期。
             {% endif %}
           </span>
-          <div class="sidebar-link-actions">
+          <div class="sidebar-link-actions hero-status-actions">
             <a class="button light" href="/briefings/latest">查看结果</a>
           </div>
         </article>
@@ -68,7 +68,7 @@
           <strong>Markdown 输出目录</strong>
           <code>{{ briefing_dir_display }}</code>
           <span>日报会以 <code>YYYY-MM-DD.md</code> 的形式保存在这里，方便你直接打开或同步到其他工具。</span>
-          <div class="sidebar-link-actions">
+          <div class="sidebar-link-actions hero-status-actions">
             <form method="post" action="/actions/open-output-dir" hx-post="/actions/open-output-dir" hx-target="#action-response" hx-swap="innerHTML show:none" hx-push-url="false">
               <button class="secondary" type="submit" hx-disabled-elt="this">打开目录 <span class="htmx-indicator">处理中...</span></button>
             </form>
@@ -85,7 +85,7 @@
               完成第 6 步后，这台电脑就会在你设定的时间自动抓取并生成日报。
             {% endif %}
           </span>
-          <div class="sidebar-link-actions">
+          <div class="sidebar-link-actions hero-status-actions">
             <button class="button light" type="button" data-scroll-target="#wizard-step-schedule">去设置</button>
           </div>
         </article>

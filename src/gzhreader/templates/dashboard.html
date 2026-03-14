@@ -189,18 +189,18 @@
     }
     .sidebar-status-list {
       display: grid;
-      gap: 10px;
+      gap: 8px;
     }
     .sidebar-status-card {
       width: 100%;
-      min-height: 96px;
-      padding: 16px 15px;
-      border-radius: 20px;
+      min-height: 82px;
+      padding: 13px 14px;
+      border-radius: 18px;
       border: 1px solid rgba(59, 130, 246, 0.18);
       background: linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(10, 10, 10, 0.92));
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 38px -30px rgba(59, 130, 246, 0.45);
       display: grid;
-      gap: 6px;
+      gap: 4px;
       align-content: center;
       justify-items: start;
       text-align: left;
@@ -215,14 +215,14 @@
       box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35), 0 0 0 4px rgba(59, 130, 246, 0.22);
     }
     .sidebar-status-state {
-      font-size: 28px;
+      font-size: 24px;
       line-height: 1.05;
       font-weight: 700;
       letter-spacing: -0.03em;
       color: #f8fbff;
     }
     .sidebar-status-label {
-      font-size: 16px;
+      font-size: 14px;
       color: #dbeafe;
       line-height: 1.3;
     }
@@ -274,6 +274,42 @@
       gap: 12px;
       padding: 0 16px 16px;
       container-type: inline-size;
+    }
+    .sidebar-help-body {
+      gap: 14px;
+    }
+    .sidebar-help-intro {
+      line-height: 1.75;
+    }
+    .sidebar-help-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .sidebar-help-mini-card {
+      display: grid;
+      gap: 6px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(59, 130, 246, 0.16);
+      background: rgba(15, 23, 42, 0.46);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    .sidebar-help-mini-card strong {
+      font-size: 15px;
+      color: #e2e8f0;
+    }
+    .sidebar-help-mini-card span {
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+    .sidebar-footer-section {
+      margin-top: auto;
+      gap: 10px;
+      padding-top: 6px;
+    }
+    .sidebar-about-button {
+      width: 100%;
     }
 
     .main-area {
@@ -596,7 +632,7 @@
       color: #f8fbff;
     }
     .hero-status-card span {
-      font-size: 13px;
+      font-size: 14px;
       line-height: 1.7;
       color: #dbeafe;
       overflow-wrap: anywhere;
@@ -611,6 +647,20 @@
     }
     .hero-status-card .sidebar-link-actions {
       margin-top: auto;
+    }
+    .hero-status-actions {
+      display: grid;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .hero-status-actions > *,
+    .hero-status-actions form {
+      width: 100%;
+      min-width: 0;
+    }
+    .hero-status-actions .button,
+    .hero-status-actions button {
+      width: 100%;
     }
 
     .main-stack { display: grid; gap: 24px; }
@@ -889,21 +939,34 @@
     .manual-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+      gap: 14px;
     }
     .manual-card {
       display: grid;
-      gap: 10px;
-      padding: 16px;
-      border-radius: 18px;
-      border: 1px solid var(--border);
-      background: var(--surface-soft);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      gap: 12px;
+      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(59, 130, 246, 0.14);
+      background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.54), rgba(10, 10, 10, 0.9)),
+        var(--surface-soft);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 28px -26px rgba(59, 130, 246, 0.28);
+      align-content: start;
     }
     .manual-card strong {
       font-size: 16px;
       line-height: 1.4;
       color: #e2e8f0;
+    }
+    .manual-card .subtle {
+      line-height: 1.75;
+    }
+    .manual-card-emphasis {
+      border-color: rgba(245, 158, 11, 0.24);
+      background:
+        radial-gradient(circle at top right, rgba(245, 158, 11, 0.08), transparent 42%),
+        linear-gradient(180deg, rgba(25, 20, 10, 0.68), rgba(10, 10, 10, 0.94));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 30px -24px rgba(245, 158, 11, 0.24);
     }
     .manual-index {
       display: inline-flex;
@@ -929,6 +992,23 @@
     }
     .manual-list li {
       line-height: 1.7;
+    }
+    .manual-card .sidebar-link-actions {
+      margin-top: auto;
+    }
+    .sidebar-link-actions-stack {
+      display: grid;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .sidebar-link-actions-stack > *,
+    .sidebar-link-actions-stack form {
+      width: 100%;
+      min-width: 0;
+    }
+    .sidebar-link-actions-stack .button,
+    .sidebar-link-actions-stack button {
+      width: 100%;
     }
 
     .status-list { display: grid; gap: 8px; }
@@ -1282,6 +1362,176 @@
     }
     .busy-banner.show { display: block; }
 
+    .about-dialog {
+      width: min(780px, calc(100vw - 32px));
+      max-width: none;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+    }
+    .about-dialog::backdrop {
+      background: rgba(2, 6, 23, 0.74);
+      backdrop-filter: blur(10px);
+    }
+    .about-dialog-card {
+      display: grid;
+      gap: 18px;
+      max-height: min(860px, calc(100vh - 36px));
+      padding: 26px;
+      overflow-y: auto;
+      border-radius: 28px;
+      border: 1px solid rgba(59, 130, 246, 0.28);
+      background:
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 42%),
+        radial-gradient(circle at top left, rgba(96, 165, 250, 0.12), transparent 38%),
+        linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(10, 10, 10, 0.96));
+      box-shadow: 0 30px 70px -34px rgba(59, 130, 246, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+    .about-dialog-hero {
+      padding: 18px 18px 0;
+      border-radius: 24px;
+      border: 1px solid rgba(96, 165, 250, 0.18);
+      background:
+        linear-gradient(135deg, rgba(30, 41, 59, 0.86), rgba(15, 23, 42, 0.56)),
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.22), transparent 46%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+    .about-dialog-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .about-dialog-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .about-dialog-brand-copy {
+      display: grid;
+      gap: 10px;
+    }
+    .about-dialog-brand img {
+      width: 62px;
+      height: 62px;
+      padding: 12px;
+      border-radius: 20px;
+      background: rgba(59, 130, 246, 0.18);
+      border: 1px solid rgba(96, 165, 250, 0.34);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    .about-dialog-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .about-dialog-title {
+      font-size: 28px;
+      line-height: 1.05;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    .about-dialog-version-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: rgba(250, 204, 21, 0.12);
+      border: 1px solid rgba(250, 204, 21, 0.34);
+      color: #fde68a;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .about-dialog-subtitle {
+      font-size: 15px;
+      line-height: 1.75;
+      color: #dbeafe;
+      max-width: 560px;
+    }
+    .about-dialog-close {
+      min-width: 92px;
+    }
+    .about-dialog-sections {
+      display: grid;
+      gap: 14px;
+    }
+    .about-dialog-section {
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(59, 130, 246, 0.16);
+      background: rgba(15, 23, 42, 0.5);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+    .about-dialog-section-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #f8fbff;
+    }
+    .about-dialog-section-copy {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.85;
+      color: #dbeafe;
+    }
+    .about-dialog-actions {
+      display: grid;
+      gap: 12px;
+    }
+    .about-dialog-full-button {
+      width: 100%;
+      justify-content: center;
+    }
+    .about-dialog-inline-note {
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(96, 165, 250, 0.24);
+      color: #bfdbfe;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .about-dialog-inline-note:empty {
+      display: none;
+    }
+    .about-dialog-linkline {
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(2, 6, 23, 0.28);
+      border: 1px solid rgba(59, 130, 246, 0.14);
+      color: #bfdbfe;
+      font-size: 14px;
+      line-height: 1.75;
+      overflow-wrap: anywhere;
+    }
+    .about-dialog-author-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: #f8fbff;
+    }
+    .about-dialog-author-lines {
+      display: grid;
+      gap: 6px;
+      color: #dbeafe;
+      font-size: 15px;
+      line-height: 1.75;
+    }
+    .about-dialog-footer {
+      display: grid;
+      gap: 4px;
+      padding: 2px 4px 0;
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.7;
+      text-align: center;
+      justify-items: center;
+    }
+
     .wewe-warning-banner {
       display: flex;
       align-items: flex-start;
@@ -1360,6 +1610,7 @@
     @media (max-width: 880px) {
       .docker-showcase, .docker-journey-grid, .docker-journey-grid.wide, .manual-grid, .docker-help-grid { grid-template-columns: 1fr; }
       .docker-actions-row-primary, .docker-actions-row-secondary { grid-template-columns: 1fr; }
+      .about-dialog-card { padding: 20px; }
       .helper-grid, .grid-2, .grid-3, .schedule-grid, .schedule-preview, .hero-status-grid, .hero-chip-band { grid-template-columns: 1fr; }
       .schedule-banner { flex-direction: column; align-items: flex-start; }
       .output-dir-form { grid-template-columns: 1fr; }
@@ -1374,7 +1625,10 @@
       .step-head { flex-wrap: wrap; }
       .status-pill { margin-left: 0; }
       .step-body { padding-left: 0; }
-      .result-item, .status-row, .between, .schedule-banner { flex-direction: column; align-items: flex-start; }
+      .result-item, .status-row, .between, .schedule-banner, .about-dialog-head { flex-direction: column; align-items: flex-start; }
+      .about-dialog-hero { padding: 16px 16px 0; }
+      .about-dialog-brand { align-items: flex-start; }
+      .about-dialog-title-row { align-items: flex-start; }
       .hero-actions, .sidebar-link-actions { flex-direction: column; align-items: stretch; }
       .time-grid { grid-template-columns: 1fr; max-width: none; }
       .time-sep { display: none; }
@@ -1700,11 +1954,56 @@
         }
       };
 
+      const bindAboutPlaceholders = (root = document) => {
+        const triggers = root.querySelectorAll('[data-about-placeholder-trigger]');
+        for (const trigger of triggers) {
+          if (trigger.dataset.aboutPlaceholderBound === 'true') continue;
+          trigger.addEventListener('click', () => {
+            const targetId = trigger.dataset.placeholderTarget || '';
+            if (!targetId) return;
+            const target = document.getElementById(targetId);
+            if (!target) return;
+            target.textContent = trigger.dataset.placeholderMessage || '';
+          });
+          trigger.dataset.aboutPlaceholderBound = 'true';
+        }
+      };
+
       const syncDockerBlockedLayout = () => {
         const appShell = document.querySelector('.app-shell');
         const stateNode = document.querySelector('#top-chrome [data-docker-blocked-state]');
         if (!appShell || !stateNode) return;
         appShell.classList.toggle('app-shell-docker-blocked', stateNode.dataset.dockerBlockedState === 'true');
+      };
+
+      const bindDialogs = (root = document) => {
+        for (const trigger of root.querySelectorAll('[data-open-dialog]')) {
+          if (trigger.dataset.dialogBound === 'true') continue;
+          trigger.addEventListener('click', () => {
+            const dialogId = trigger.dataset.openDialog || '';
+            const dialog = dialogId ? document.getElementById(dialogId) : null;
+            if (!dialog || dialog.tagName !== 'DIALOG') return;
+            if (typeof dialog.showModal === 'function') {
+              dialog.showModal();
+            } else {
+              dialog.setAttribute('open', 'open');
+            }
+          });
+          trigger.dataset.dialogBound = 'true';
+        }
+
+        for (const dialog of root.querySelectorAll('dialog')) {
+          if (dialog.dataset.dialogShellBound === 'true') continue;
+          dialog.addEventListener('click', (event) => {
+            if (event.target !== dialog) return;
+            if (typeof dialog.close === 'function') {
+              dialog.close();
+            } else {
+              dialog.removeAttribute('open');
+            }
+          });
+          dialog.dataset.dialogShellBound = 'true';
+        }
       };
 
       const initializeUiBindings = (root = document) => {
@@ -1717,6 +2016,8 @@
         bindSchedulePreview(root);
         bindPasswordToggles(root);
         bindCopyButtons(root);
+        bindAboutPlaceholders(root);
+        bindDialogs(root);
       };
 
       initializeUiBindings(document);

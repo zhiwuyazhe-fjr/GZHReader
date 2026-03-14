@@ -143,6 +143,31 @@ class FakeBackend:
             "llm_uses_env_api_key": False,
             "advanced_feedback": advanced_feedback,
             "terminal_notice": "运行某些步骤时，程序可能会短暂打开终端或系统窗口。这是正常现象，不需要手动关闭。",
+            "app_version": "v1.5.0",
+            "about_tagline": "把微信公众号阅读流，整理成一份真正有价值的 AI 日报",
+            "about_motivation_text": (
+                "在信息过载的时代，“订阅”并不代表“拥有”。我开发 GZHReader 是为了打破公众号“阅后即焚”的困局，"
+                "利用大模型将海量推送深度提炼为整洁的本地 Markdown 日报。把阅读从“沙里淘金”的体力活，变成一种"
+                "高效、静谧的知识沉淀过程😘"
+            ),
+            "about_feature_suggestion_placeholder": "功能建议入口预留中，后续会在这里补上直达链接。",
+            "about_feedback_issue_url": "https://github.com/zhiwuyazhe-fjr/GZHReader/issues/new",
+            "about_repo_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
+            "about_support_text": (
+                "GZHReader的成长，离不开你的每一次高效交互。如果它曾为你节省过一分钟，或带来过一次惊喜，请考虑支持它的未来。"
+                "每一份认可，都是我继续敲下下一行代码的动力💕"
+            ),
+            "about_author_name": "zhiwuyazhe_fjr",
+            "about_author_lines": [
+                "📍 TJU | CS 在读",
+                "🚀 AI 探索者 | 预备役创业者",
+                "✨ Elon Musk 信徒",
+            ],
+            "about_author_github_url": "https://github.com/zhiwuyazhe-fjr",
+            "about_footer_lines": [
+                "感谢你把时间交给 GZHReader，愿它帮你把零散推送沉淀成真正值得回看的知识资产❤️",
+                "GZHReader · MIT License · 默认本地运行，配置与日报文件由你自己掌控",
+            ],
         }
 
     def is_docker_ready(self):
@@ -259,6 +284,18 @@ def test_sidebar_cards_explain_key_links() -> None:
     assert "日报结果保存位置" in response.text
 
 
+def test_homepage_moves_helper_content_to_sidebar_help_center() -> None:
+    client = TestClient(create_app(backend=FakeBackend()))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "帮助中心" in response.text
+    assert "先理解两件事" in response.text
+    assert "你看到的两个容器不是两个项目" in response.text
+    assert '<h2 class="panel-title">先理解两件事</h2>' not in response.text
+
+
 def test_homepage_has_quick_run_today_entry() -> None:
     client = TestClient(create_app(backend=FakeBackend()))
 
@@ -306,6 +343,7 @@ def test_sidebar_key_entries_render_as_collapsed_details() -> None:
     assert '<details class="sidebar-entry-card" data-sidebar-section="aggregate-feed">' in response.text
     assert '<details class="sidebar-entry-card" data-sidebar-section="wewe-admin">' in response.text
     assert '<details class="sidebar-entry-card" data-sidebar-section="briefing-directory">' in response.text
+    assert '<details class="sidebar-entry-card sidebar-help-card" data-sidebar-section="help-center">' in response.text
     assert 'gzhreader.sidebar.width' in response.text
     assert 'gzhreader.sidebar.sections' in response.text
 
@@ -337,6 +375,26 @@ def test_dashboard_merges_wewe_and_terminal_notices_into_one_warning_banner() ->
     assert "运行提示：" in response.text
     assert "程序可能会短暂打开终端或系统窗口" in response.text
     assert "terminal-notice-banner" not in response.text
+
+
+def test_hero_status_cards_render_full_width_actions() -> None:
+    client = TestClient(create_app(backend=FakeBackend()))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.text.count('class="sidebar-link-actions hero-status-actions"') == 3
+
+
+def test_subscription_help_card_keeps_only_official_project_button() -> None:
+    client = TestClient(create_app(backend=FakeBackend()))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "官方项目页" in response.text
+    assert '>本地后台地址</a>' not in response.text
+    assert '>聚合 RSS</a>' not in response.text
 
 
 def test_schedule_step_shows_stateful_actions_when_not_installed() -> None:
@@ -559,6 +617,31 @@ def test_dashboard_mentions_terminal_window_notice() -> None:
 
     assert response.status_code == 200
     assert "程序可能会短暂打开终端或系统窗口" in response.text
+
+
+def test_sidebar_renders_about_button_and_dialog() -> None:
+    client = TestClient(create_app(backend=FakeBackend()))
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'data-open-dialog="about-dialog"' in response.text
+    assert '<dialog id="about-dialog" class="about-dialog">' in response.text
+    assert "v1.5.0" in response.text
+    assert "把微信公众号阅读流，整理成一份真正有价值的 AI 日报" in response.text
+    assert "作者的主页" in response.text
+    assert "在信息过载的时代，“订阅”并不代表“拥有”。" in response.text
+    assert "问题反馈 / 支持" in response.text
+    assert "https://github.com/zhiwuyazhe-fjr/GZHReader/issues/new" in response.text
+    assert "GitHub 仓库入口" in response.text
+    assert 'data-copy-text="https://github.com/zhiwuyazhe-fjr/GZHReader"' in response.text
+    assert "zhiwuyazhe_fjr" in response.text
+    assert "📍 TJU | CS 在读" in response.text
+    assert "🚀 AI 探索者 | 预备役创业者" in response.text
+    assert "✨ Elon Musk 信徒" in response.text
+    assert "感谢你把时间交给 GZHReader，愿它帮你把零散推送沉淀成真正值得回看的知识资产❤️" in response.text
+    assert "GZHReader · MIT License · 默认本地运行，配置与日报文件由你自己掌控" in response.text
+    assert "聚合 RSS + 正文补抓" not in response.text
 
 
 def test_save_llm_failure_renders_step_feedback_near_llm_module() -> None:

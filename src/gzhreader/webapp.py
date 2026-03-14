@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from . import __version__
 from .article_fetcher import ArticleContentFetcher
 from .briefing import BriefingBuilder
 from .config import (
@@ -68,6 +69,30 @@ DOCKER_INSTALL_URL = "https://docs.docker.com/desktop/"
 BRIEFING_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:_\d+)?\.md$")
 LLM_API_KEY_PLACEHOLDER = "__GZHREADER_KEEP_EXISTING_API_KEY__"
 TERMINAL_NOTICE = "运行某些步骤时，程序可能会短暂打开终端或系统窗口。这是正常现象，不需要手动关闭，等待当前步骤完成即可。"
+ABOUT_TAGLINE = "把微信公众号阅读流，整理成一份真正有价值的 AI 日报"
+ABOUT_MOTIVATION_TEXT = (
+    "在信息过载的时代，“订阅”并不代表“拥有”。我开发 GZHReader 是为了打破公众号“阅后即焚”的困局，"
+    "利用大模型将海量推送深度提炼为整洁的本地 Markdown 日报。把阅读从“沙里淘金”的体力活，变成一种"
+    "高效、静谧的知识沉淀过程😘"
+)
+ABOUT_FEATURE_SUGGESTION_PLACEHOLDER = "功能建议入口预留中，后续会在这里补上直达链接。"
+ABOUT_FEEDBACK_ISSUE_URL = "https://github.com/zhiwuyazhe-fjr/GZHReader/issues/new"
+ABOUT_REPO_URL = "https://github.com/zhiwuyazhe-fjr/GZHReader"
+ABOUT_SUPPORT_TEXT = (
+    "GZHReader的成长，离不开你的每一次高效交互。如果它曾为你节省过一分钟，或带来过一次惊喜，请考虑支持它的未来。"
+    "每一份认可，都是我继续敲下下一行代码的动力💕"
+)
+ABOUT_AUTHOR_NAME = "zhiwuyazhe_fjr"
+ABOUT_AUTHOR_LINES = [
+    "📍 TJU | CS 在读",
+    "🚀 AI 探索者 | 预备役创业者",
+    "✨ Elon Musk 信徒",
+]
+ABOUT_AUTHOR_GITHUB_URL = "https://github.com/zhiwuyazhe-fjr"
+ABOUT_FOOTER_LINES = [
+    "感谢你把时间交给 GZHReader，愿它帮你把零散推送沉淀成真正值得回看的知识资产❤️",
+    "GZHReader · MIT License · 默认本地运行，配置与日报文件由你自己掌控",
+]
 
 
 def _build_llm_status(config: AppConfig) -> dict[str, object]:
@@ -177,6 +202,17 @@ class DashboardBackend:
             "llm_uses_env_api_key": llm_status["uses_env_api_key"],
             "advanced_feedback": action_result if action_result and action_result.get("scope") == "advanced" else None,
             "terminal_notice": TERMINAL_NOTICE,
+            "app_version": __version__,
+            "about_tagline": ABOUT_TAGLINE,
+            "about_motivation_text": ABOUT_MOTIVATION_TEXT,
+            "about_feature_suggestion_placeholder": ABOUT_FEATURE_SUGGESTION_PLACEHOLDER,
+            "about_feedback_issue_url": ABOUT_FEEDBACK_ISSUE_URL,
+            "about_repo_url": ABOUT_REPO_URL,
+            "about_support_text": ABOUT_SUPPORT_TEXT,
+            "about_author_name": ABOUT_AUTHOR_NAME,
+            "about_author_lines": ABOUT_AUTHOR_LINES,
+            "about_author_github_url": ABOUT_AUTHOR_GITHUB_URL,
+            "about_footer_lines": ABOUT_FOOTER_LINES,
         }
 
     def collect_status(self, config: AppConfig) -> dict:
