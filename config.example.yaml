@@ -1,27 +1,30 @@
-﻿db_path: ./data/gzhreader.db
+db_path: ./data/gzhreader.db
+
 source:
   mode: aggregate
-  url: http://localhost:4000/feeds/all.atom
+  url: http://127.0.0.1:4000/feeds/all.atom
+
+rss_service:
+  mode: bundled_wewe_rss
+  base_url: http://127.0.0.1:4000
+  # AUTH_CODE 是进入本地公众号服务后台的访问码，不是微信密码。
+  auth_code: "123567"
+  port: 4000
+  host: 127.0.0.1
+  data_dir: ./.runtime/wewe-rss/data
+  log_file: ./logs/wewe-rss.log
+
 schedule:
-  daily_time: '21:30'
+  daily_time: "21:30"
   timezone: Asia/Shanghai
+
 rss:
   timezone: Asia/Shanghai
-  day_start: '00:00'
+  day_start: "00:00"
   request_timeout_seconds: 20
-  user_agent: GZHReader/0.2.0
+  user_agent: GZHReader/v2.0.0
   daily_article_limit: 20
-wewe_rss:
-  enabled: true
-  base_url: http://localhost:4000
-  # AUTH_CODE 是本地 wewe-rss 后台访问码，不是微信密码。
-  auth_code: '123567'
-  service_dir: ./infra/wewe-rss
-  # mysql 变体会启动 mysql 容器；sqlite 变体则不会。
-  compose_variant: mysql
-  port: 4000
-  server_origin_url: http://localhost:4000
-  image: cooderl/wewe-rss:latest
+
 article_fetch:
   enabled: true
   trigger: missing_rss_content
@@ -31,16 +34,17 @@ article_fetch:
     - msedge
     - chrome
   max_content_chars: 12000
+
 llm:
   base_url: https://api.openai.com/v1
-  api_key: ''
+  api_key: ""
   model: gpt-4o-mini
   timeout_seconds: 45
   retries: 2
   temperature: 0.2
+
 output:
   briefing_dir: ./output/briefings
   raw_archive_dir: ./output/raw
   save_raw_html: false
   log_level: INFO
-

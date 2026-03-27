@@ -1,0 +1,118 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <section class="hero">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <div class="eyebrow">今日工作台</div>
+        <h1 class="hero-title hero-title-tight">{{ home_summary.headline }}</h1>
+        <div class="editorial-rule"></div>
+        <div class="hero-lead">{{ home_summary.detail }}</div>
+        <div class="action-row">
+          <form method="post" action="/actions/run-now">
+            <input type="hidden" name="target_date" value="{{ today }}">
+            <button class="primary" type="submit">立即生成今天</button>
+          </form>
+          <form method="post" action="/actions/service/open-admin">
+            <button class="secondary" type="submit">打开公众号后台</button>
+          </form>
+          <a class="button secondary" href="/settings">进入设置</a>
+        </div>
+      </div>
+      <aside class="summary-card">
+        <div class="summary-label">今日状态</div>
+        <div class="summary-value">{{ home_summary.status_label }}</div>
+        <div class="summary-detail">
+          聚合源：{{ status.source.detail }}<br>
+          服务状态：{{ status.service.web_detail }}<br>
+          AI 状态：{{ status.llm.detail }}
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="section-grid">
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">最近日报</h2>
+          <div class="panel-copy">像期刊目录一样浏览最近生成的日报，检查今天的整理是否已经成刊。</div>
+        </div>
+        <a class="button secondary" href="/briefings/latest">打开最新一份</a>
+      </div>
+      {% if recent_briefings %}
+        <div class="briefing-list">
+          {% for briefing in recent_briefings %}
+            <a class="briefing-item" href="/briefings/{{ briefing.date_text }}">
+              <div class="briefing-date">{{ briefing.date_text }}</div>
+              <div class="briefing-meta">{{ briefing.path }}</div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          还没有生成过日报。先确认公众号服务已经启动并能读取聚合源，然后点击上面的“立即生成今天”。
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">系统摘要</h2>
+          <div class="panel-copy">首页只保留真正影响今天工作的状态，其余配置统一收进设置页。</div>
+        </div>
+      </div>
+      <div class="status-list">
+        <div class="status-item">
+          <strong>公众号服务</strong>
+          <span class="status-pill {{ 'ok' if status.service.web_ok else 'bad' }}">{{ '可用' if status.service.web_ok else '未就绪' }}</span>
+          <div class="status-detail">{{ status.service.runtime_detail }}<br>{{ status.service.process_detail }}<br>{{ status.service.web_detail }}</div>
+        </div>
+        <div class="status-item">
+          <strong>AI 摘要</strong>
+          <span class="status-pill {{ 'ok' if status.llm.configured else 'warn' }}">{{ '已配置' if status.llm.configured else '待配置' }}</span>
+          <div class="status-detail">{{ status.llm.detail }}</div>
+        </div>
+        <div class="status-item">
+          <strong>自动运行</strong>
+          <span class="status-pill {{ 'ok' if status.schedule.installed else 'warn' }}">{{ '已开启' if status.schedule.installed else '未开启' }}</span>
+          <div class="status-detail">{{ status.schedule.detail }}<br>{{ status.schedule.daily_limit_label }}</div>
+        </div>
+        <div class="status-item">
+          <strong>输出目录</strong>
+          <div class="status-detail">{{ settings_snapshot.output_dir }}</div>
+          <div class="inline-actions">
+            <form method="post" action="/actions/open-output-dir">
+              <button class="secondary" type="submit">打开目录</button>
+            </form>
+            <a class="button secondary" href="/settings">调整设置</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">今日工作提示</h2>
+        <div class="panel-copy">不再用锁死式向导逼着你按步骤点击，而是只保留当前最值得处理的下一步。</div>
+      </div>
+    </div>
+    <div class="snapshot-list">
+      <div class="snapshot-item">
+        <div class="snapshot-label">如果服务还没启动</div>
+        <div class="snapshot-value">去设置页启动本地公众号服务，然后打开后台扫码登录微信。</div>
+      </div>
+      <div class="snapshot-item">
+        <div class="snapshot-label">如果聚合源还不可读</div>
+        <div class="snapshot-value">在后台确认账号在线、订阅列表正常，然后点击“更新全部”。</div>
+      </div>
+      <div class="snapshot-item">
+        <div class="snapshot-label">如果 AI 还没配置</div>
+        <div class="snapshot-value">进入设置页完成 base URL、model、API key 配置，并做一次连通性测试。</div>
+      </div>
+    </div>
+  </section>
+{% endblock %}

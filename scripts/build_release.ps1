@@ -1,6 +1,8 @@
 ﻿param(
     [string]$PythonExe = "",
     [string]$InnoSetupExe = "",
+    [string]$NodeExe = "",
+    [string]$PnpmExe = "",
     [switch]$SkipInstaller
 )
 
@@ -114,6 +116,7 @@ $issPath = Join-Path $projectRoot 'packaging\inno\GZHReader.iss'
 $iconPath = Join-Path $projectRoot 'packaging\assets\gzhreader.ico'
 $wizardSidebarPath = Join-Path $projectRoot 'packaging\assets\wizard-sidebar.bmp'
 $wizardSmallPath = Join-Path $projectRoot 'packaging\assets\wizard-small.bmp'
+$buildWeweRssScript = Join-Path $projectRoot 'scripts\build_wewe_rss.ps1'
 $appVersion = (& $PythonExe -c "from pathlib import Path; namespace = {}; exec(Path('src/gzhreader/__init__.py').read_text(encoding='utf-8'), namespace); print(namespace['__version__'])").Trim()
 
 Stop-LocalBuildProcesses -TargetRoot $distDir
@@ -135,6 +138,9 @@ if (-not (Test-Path $wizardSidebarPath)) {
 if (-not (Test-Path $wizardSmallPath)) {
     throw 'Wizard small image is missing: packaging\assets\wizard-small.bmp'
 }
+if (-not (Test-Path $buildWeweRssScript)) {
+    throw 'wewe-rss build script is missing: scripts\build_wewe_rss.ps1'
+}
 
 & $PythonExe -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('PyInstaller') else 1)"
 if ($LASTEXITCODE -ne 0) {
@@ -143,6 +149,12 @@ if ($LASTEXITCODE -ne 0) {
     if ($LASTEXITCODE -ne 0) {
         throw 'PyInstaller 安装失败。'
     }
+}
+
+Write-Host '开始构建 bundled wewe-rss 运行时...'
+& powershell.exe -ExecutionPolicy Bypass -File $buildWeweRssScript -NodeExe $NodeExe -PnpmExe $PnpmExe
+if ($LASTEXITCODE -ne 0) {
+    throw 'bundled wewe-rss 构建失败。'
 }
 
 Write-Host '开始构建 PyInstaller 产物...'
@@ -163,6 +175,9 @@ if (-not (Test-Path (Join-Path $distAppDir '_internal\scripts\register_task.ps1'
 }
 if (-not (Test-Path (Join-Path $distAppDir '_internal\gzhreader\templates'))) {
     throw '资源检查失败：templates 未被打入产物'
+}
+if (-not (Test-Path (Join-Path $distAppDir '_internal\wewe-rss-runtime\apps\server\dist\main.js'))) {
+    throw '资源检查失败：bundled wewe-rss 运行时未被打入产物'
 }
 
 if ($SkipInstaller) {

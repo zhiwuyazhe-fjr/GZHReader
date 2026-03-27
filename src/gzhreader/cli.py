@@ -16,6 +16,7 @@ from .briefing import BriefingBuilder
 from .config import AppConfig, default_config, ensure_config, save_config
 from .logging_utils import configure_logging
 from .rss_client import RSSClient
+from .rss_service import BundledRSSServiceManager
 from .runtime_paths import DEFAULT_GUI_HOST, DEFAULT_GUI_PORT, ensure_runtime_dirs, resolve_config_path
 from .scheduler import get_schedule_status, install_schedule, remove_schedule
 from .service import ReaderService
@@ -23,15 +24,14 @@ from .storage import Storage
 from .summarizer import OpenAICompatibleSummarizer
 from .types import DoctorCheck
 from .webapp import create_app as create_web_app
-from .wewe_rss import WeWeRSSManager
 
-app = typer.Typer(help="GZHReader GUI launcher and RSS workflow tools")
-run_app = typer.Typer(help="Run daily briefing jobs")
+app = typer.Typer(help="GZHReader desktop workspace")
+run_app = typer.Typer(help="Run briefing generation")
 schedule_app = typer.Typer(help="Manage Windows scheduled task")
-wewe_app = typer.Typer(help="Manage bundled wewe-rss service")
+service_app = typer.Typer(help="Manage bundled RSS service")
 app.add_typer(run_app, name="run")
 app.add_typer(schedule_app, name="schedule")
-app.add_typer(wewe_app, name="wewe-rss")
+app.add_typer(service_app, name="service")
 
 
 @app.command()
@@ -42,14 +42,8 @@ def init(
     config_path = _resolve_cli_config_path(config)
     if config_path.exists() and not force:
         raise typer.BadParameter(f"Config already exists: {config_path}")
-    config_data = _bootstrap_config(config_path, force=force)
-
-    manager = WeWeRSSManager(config_data.wewe_rss)
-    generated = manager.ensure_scaffold(force=False)
-
+    _bootstrap_config(config_path, force=force)
     typer.echo(f"Created config: {config_path}")
-    for path in generated:
-        typer.echo(f"- scaffold: {path}")
 
 
 @app.command("app")
@@ -68,13 +62,7 @@ def doctor(config: Path | None = typer.Option(None, "--config", help="Config fil
     config_data = ensure_config(config_path)
     configure_logging(config_data.output.log_level)
 
-    rss_client = RSSClient(config_data.rss)
-    storage = Storage(config_data.db_path)
-    summarizer = OpenAICompatibleSummarizer(config_data.llm)
-    manager = WeWeRSSManager(config_data.wewe_rss)
-    article_fetcher = ArticleContentFetcher(config_data.article_fetch, config_data.rss)
-    checks = build_doctor_checks(config_data, rss_client, storage, summarizer, manager, article_fetcher)
-
+    checks = build_doctor_checks(config_data)
     failed = False
     for check in checks:
         prefix = "[OK]" if check.ok else "[FAIL]"
@@ -87,7 +75,7 @@ def doctor(config: Path | None = typer.Option(None, "--config", help="Config fil
 @run_app.command("today")
 def run_today(
     config: Path | None = typer.Option(None, "--config", help="Config file path"),
-    feed: str | None = typer.Option(None, "--feed", help="Deprecated; aggregate source is always used"),
+    feed: str | None = typer.Option(None, "--feed", help="Deprecated and ignored"),
 ) -> None:
     _run_once(_resolve_cli_config_path(config), date.today(), feed)
 
@@ -96,7 +84,7 @@ def run_today(
 def run_date(
     target_date: str,
     config: Path | None = typer.Option(None, "--config", help="Config file path"),
-    feed: str | None = typer.Option(None, "--feed", help="Deprecated; aggregate source is always used"),
+    feed: str | None = typer.Option(None, "--feed", help="Deprecated and ignored"),
 ) -> None:
     parsed = datetime.strptime(target_date, "%Y-%m-%d").date()
     _run_once(_resolve_cli_config_path(config), parsed, feed)
@@ -115,36 +103,45 @@ def schedule_remove_cmd() -> None:
     typer.echo(remove_schedule())
 
 
-@wewe_app.command("init")
-def wewe_init(
-    config: Path | None = typer.Option(None, "--config", help="Config file path"),
-    force: bool = typer.Option(False, "--force", help="Overwrite docker compose scaffold"),
-) -> None:
+@service_app.command("start")
+def service_start(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
     config_data = ensure_config(_resolve_cli_config_path(config))
-    manager = WeWeRSSManager(config_data.wewe_rss)
-    for path in manager.ensure_scaffold(force=force):
-        typer.echo(path)
+    typer.echo(BundledRSSServiceManager(config_data.rss_service).start())
 
 
-@wewe_app.command("up")
-def wewe_up(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
+@service_app.command("stop")
+def service_stop(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
     config_data = ensure_config(_resolve_cli_config_path(config))
-    manager = WeWeRSSManager(config_data.wewe_rss)
-    typer.echo(manager.up())
+    typer.echo(BundledRSSServiceManager(config_data.rss_service).stop())
 
 
-@wewe_app.command("down")
-def wewe_down(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
+@service_app.command("restart")
+def service_restart(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
     config_data = ensure_config(_resolve_cli_config_path(config))
-    manager = WeWeRSSManager(config_data.wewe_rss)
-    typer.echo(manager.down())
+    typer.echo(BundledRSSServiceManager(config_data.rss_service).restart())
 
 
-@wewe_app.command("logs")
-def wewe_logs(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
+@service_app.command("status")
+def service_status(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
     config_data = ensure_config(_resolve_cli_config_path(config))
-    manager = WeWeRSSManager(config_data.wewe_rss)
-    typer.echo(manager.logs())
+    status = BundledRSSServiceManager(config_data.rss_service).status_snapshot()
+    typer.echo(f"runtime: {'ok' if status.runtime_ok else 'fail'} - {status.runtime_detail}")
+    typer.echo(f"process: {'ok' if status.process_ok else 'fail'} - {status.process_detail}")
+    typer.echo(f"web: {'ok' if status.web_ok else 'fail'} - {status.web_detail}")
+    typer.echo(f"admin: {status.admin_url}")
+    typer.echo(f"feed: {status.feed_url}")
+
+
+@service_app.command("logs")
+def service_logs(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
+    config_data = ensure_config(_resolve_cli_config_path(config))
+    typer.echo(BundledRSSServiceManager(config_data.rss_service).logs())
+
+
+@service_app.command("open-admin")
+def service_open_admin(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
+    config_data = ensure_config(_resolve_cli_config_path(config))
+    typer.echo(BundledRSSServiceManager(config_data.rss_service).open_admin())
 
 
 def run_gui_server(
@@ -157,7 +154,6 @@ def run_gui_server(
     config_path = _resolve_cli_config_path(config)
     config_data = _bootstrap_config(config_path, force=False)
     configure_logging(config_data.output.log_level)
-    WeWeRSSManager(config_data.wewe_rss).ensure_scaffold(force=False)
 
     selected_port, launch_mode = _resolve_gui_port(host, port)
     base_url = f"http://{host}:{selected_port}"
@@ -254,12 +250,14 @@ def _bootstrap_config(config: Path, *, force: bool) -> AppConfig:
     if force and config.exists():
         config.unlink()
 
-    ensure_runtime_dirs()
+    runtime_paths = ensure_runtime_dirs()
     config_data = default_config()
     save_config(config_data, config)
 
     Path(config_data.db_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(config_data.rss_service.data_dir).mkdir(parents=True, exist_ok=True)
     Path(config_data.output.briefing_dir).mkdir(parents=True, exist_ok=True)
+    Path(runtime_paths.logs_dir).mkdir(parents=True, exist_ok=True)
     if config_data.output.save_raw_html:
         Path(config_data.output.raw_archive_dir).mkdir(parents=True, exist_ok=True)
 
@@ -268,7 +266,7 @@ def _bootstrap_config(config: Path, *, force: bool) -> AppConfig:
 
 def _run_once(config_path: Path, target_date: date, feed_filter: str | None) -> None:
     if feed_filter:
-        typer.echo("`--feed` is deprecated and ignored because the app now uses `all.atom`.")
+        typer.echo("`--feed` is deprecated and ignored because the app now uses a single aggregate source.")
 
     config_data = ensure_config(config_path)
     configure_logging(config_data.output.log_level)
@@ -291,14 +289,12 @@ def _run_once(config_path: Path, target_date: date, feed_filter: str | None) -> 
         typer.echo(f"error {name}: {error}")
 
 
-def build_doctor_checks(
-    config_data: AppConfig,
-    rss_client: RSSClient,
-    storage: Storage,
-    summarizer: OpenAICompatibleSummarizer,
-    manager: WeWeRSSManager,
-    article_fetcher: ArticleContentFetcher,
-) -> list[DoctorCheck]:
+def build_doctor_checks(config_data: AppConfig) -> list[DoctorCheck]:
+    rss_client = RSSClient(config_data.rss)
+    storage = Storage(config_data.db_path)
+    summarizer = OpenAICompatibleSummarizer(config_data.llm)
+    article_fetcher = ArticleContentFetcher(config_data.article_fetch, config_data.rss)
+    service_manager = BundledRSSServiceManager(config_data.rss_service)
     checks: list[DoctorCheck] = [DoctorCheck(name="Config", ok=True, detail="config loaded")]
 
     try:
@@ -318,15 +314,14 @@ def build_doctor_checks(
     storage.init_db()
     checks.append(DoctorCheck(name="SQLite", ok=True, detail=f"database ready: {config_data.db_path}"))
 
-    docker_ok, docker_detail = manager.check_docker()
-    checks.append(DoctorCheck(name="Docker", ok=docker_ok, detail=docker_detail))
+    runtime_ok, runtime_detail = service_manager.check_runtime()
+    checks.append(DoctorCheck(name="Bundled RSS runtime", ok=runtime_ok, detail=runtime_detail))
 
-    generated = manager.ensure_scaffold(force=False)
-    checks.append(DoctorCheck(name="wewe-rss scaffold", ok=True, detail=f"scaffold ready: {generated[-1]}"))
+    process_ok, process_detail = service_manager.check_process()
+    checks.append(DoctorCheck(name="Bundled RSS process", ok=process_ok, detail=process_detail))
 
-    if config_data.wewe_rss.enabled:
-        service_ok, service_detail = manager.check_service()
-        checks.append(DoctorCheck(name="wewe-rss service", ok=service_ok, detail=service_detail))
+    service_ok, service_detail = service_manager.check_service()
+    checks.append(DoctorCheck(name="Bundled RSS web", ok=service_ok, detail=service_detail))
 
     runtime_feed = config_data.runtime_feed()
     if not runtime_feed.url:

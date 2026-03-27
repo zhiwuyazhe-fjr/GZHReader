@@ -28,26 +28,16 @@ def test_wait_for_health_and_open_browser_opens_after_success(monkeypatch) -> No
     assert opened == ["http://127.0.0.1:8765"]
 
 
-
 def test_run_gui_server_disables_uvicorn_default_log_config(monkeypatch, tmp_path) -> None:
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(cli, "_bootstrap_config", lambda config, force: type("Cfg", (), {
-        "output": type("Output", (), {"log_level": "INFO"})(),
-        "wewe_rss": object(),
-    })())
+    monkeypatch.setattr(
+        cli,
+        "_bootstrap_config",
+        lambda config, force: type("Cfg", (), {"output": type("Output", (), {"log_level": "INFO"})()})(),
+    )
     monkeypatch.setattr(cli, "configure_logging", lambda level: None)
-    monkeypatch.setattr(cli, "create_web_app", lambda config_path=None: object(), raising=False)
     monkeypatch.setattr(cli, "create_web_app", lambda config_path=None: object())
-
-    class DummyManager:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        def ensure_scaffold(self, force: bool = False):
-            return []
-
-    monkeypatch.setattr(cli, "WeWeRSSManager", DummyManager)
     monkeypatch.setattr(cli.typer, "echo", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli, "_resolve_gui_port", lambda host, port: (port, "new"))
 
@@ -65,7 +55,6 @@ def test_run_gui_server_disables_uvicorn_default_log_config(monkeypatch, tmp_pat
     assert captured["log_config"] is None
 
 
-
 def test_resolve_gui_port_returns_existing_when_healthz_matches(monkeypatch) -> None:
     monkeypatch.setattr(cli, "_can_bind_port", lambda host, port: False)
     monkeypatch.setattr(cli, "_is_existing_gzhreader_gui", lambda base_url: True)
@@ -74,7 +63,6 @@ def test_resolve_gui_port_returns_existing_when_healthz_matches(monkeypatch) -> 
 
     assert port == 8765
     assert mode == "existing"
-
 
 
 def test_resolve_gui_port_falls_back_to_next_available_port(monkeypatch) -> None:

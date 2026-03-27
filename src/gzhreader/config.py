@@ -4,6 +4,7 @@ import json
 import shutil
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -13,7 +14,7 @@ from .runtime_paths import get_runtime_paths, is_frozen_app
 
 
 def build_default_source_url(base_url: str) -> str:
-    normalized = base_url.strip().rstrip("/") or "http://localhost:4000"
+    normalized = base_url.strip().rstrip("/") or "http://127.0.0.1:4000"
     return f"{normalized}/feeds/all.atom"
 
 
@@ -21,7 +22,14 @@ DAILY_ARTICLE_LIMIT_PRESETS: tuple[Literal["all"] | int, ...] = ("all", 20, 30, 
 LEGACY_DB_PATHS = ("./data/gzhreader.db", "data/gzhreader.db")
 LEGACY_BRIEFING_DIRS = ("./output/briefings", "output/briefings")
 LEGACY_RAW_ARCHIVE_DIRS = ("./output/raw", "output/raw")
-LEGACY_WEWE_RSS_DIRS = ("./infra/wewe-rss", "infra/wewe-rss")
+LEGACY_RSS_SERVICE_DATA_DIRS = (
+    "./infra/wewe-rss/data",
+    "infra/wewe-rss/data",
+    "./.runtime/wewe-rss/data",
+    ".runtime/wewe-rss/data",
+)
+LEGACY_RSS_SERVICE_LOG_FILES = ("./logs/wewe-rss.log", "logs/wewe-rss.log")
+LEGACY_RSS_SERVICE_AUTH_CODES = ("123567",)
 DEFAULT_RSS_USER_AGENT = f"GZHReader/{__version__}"
 
 
@@ -73,7 +81,7 @@ class FeedConfig(StrictBaseModel):
 
 class SourceConfig(StrictBaseModel):
     mode: Literal["aggregate"] = "aggregate"
-    url: str = "http://localhost:4000/feeds/all.atom"
+    url: str = "http://127.0.0.1:4000/feeds/all.atom"
 
     @field_validator("url")
     @classmethod
@@ -117,6 +125,39 @@ class RSSConfig(StrictBaseModel):
     def _validate_model(self) -> "RSSConfig":
         if self.request_timeout_seconds <= 0:
             raise ValueError("request_timeout_seconds must be positive")
+        return self
+
+
+class RSSServiceConfig(StrictBaseModel):
+    mode: Literal["bundled_wewe_rss"] = "bundled_wewe_rss"
+    base_url: str = "http://127.0.0.1:4000"
+    auth_code: str = ""
+    port: int = 4000
+    host: str = "127.0.0.1"
+    data_dir: str = "./.runtime/wewe-rss/data"
+    log_file: str = "./logs/wewe-rss.log"
+
+    @field_validator("host")
+    @classmethod
+    def _validate_host(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("host must not be empty")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_model(self) -> "RSSServiceConfig":
+        if self.port <= 0:
+            raise ValueError("port must be positive")
+        self.auth_code = ""
+        if not self.base_url.strip():
+            self.base_url = f"http://{self.host}:{self.port}"
+        elif self.base_url.strip().lower().startswith("http://localhost:"):
+            self.base_url = f"http://127.0.0.1:{self.port}"
+        if not self.data_dir.strip():
+            raise ValueError("data_dir must not be empty")
+        if not self.log_file.strip():
+            raise ValueError("log_file must not be empty")
         return self
 
 
@@ -188,7 +229,7 @@ class AppConfig(StrictBaseModel):
     feeds: list[FeedConfig] = Field(default_factory=list)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     rss: RSSConfig = Field(default_factory=RSSConfig)
-    wewe_rss: WeWeRSSConfig = Field(default_factory=WeWeRSSConfig)
+    rss_service: RSSServiceConfig = Field(default_factory=RSSServiceConfig)
     article_fetch: ArticleFetchConfig = Field(default_factory=ArticleFetchConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
@@ -221,11 +262,32 @@ class AppConfig(StrictBaseModel):
                     }
                 )
 
+        legacy_wewe_rss = migrated.get("wewe_rss") if isinstance(migrated.get("wewe_rss"), dict) else {}
+        if "rss_service" not in migrated:
+            base_url = str(legacy_wewe_rss.get("base_url") or "http://127.0.0.1:4000").strip()
+            legacy_service_dir = str(legacy_wewe_rss.get("service_dir") or "").strip()
+            port = legacy_wewe_rss.get("port")
+            if not port:
+                try:
+                    parsed = urlparse(base_url)
+                    port = parsed.port or 4000
+                except ValueError:
+                    port = 4000
+            migrated["rss_service"] = {
+                "mode": "bundled_wewe_rss",
+                "base_url": base_url or "http://127.0.0.1:4000",
+                "auth_code": "",
+                "port": int(port),
+                "host": "127.0.0.1",
+                "data_dir": (str(Path(legacy_service_dir) / "data") if legacy_service_dir else "./.runtime/wewe-rss/data"),
+                "log_file": "./logs/wewe-rss.log",
+            }
+
         if "source" not in migrated:
             source_url = _pick_first_active_feed_url(legacy_feeds)
             if not source_url:
-                wewe_rss = migrated.get("wewe_rss") if isinstance(migrated.get("wewe_rss"), dict) else {}
-                base_url = str(wewe_rss.get("base_url") or "http://localhost:4000")
+                rss_service = migrated.get("rss_service") if isinstance(migrated.get("rss_service"), dict) else {}
+                base_url = str(rss_service.get("base_url") or "http://127.0.0.1:4000")
                 source_url = build_default_source_url(base_url)
             migrated["source"] = {"mode": "aggregate", "url": source_url}
 
@@ -247,8 +309,12 @@ class AppConfig(StrictBaseModel):
     @model_validator(mode="after")
     def _normalize_source(self) -> "AppConfig":
         if not self.source.url:
-            self.source.url = build_default_source_url(self.wewe_rss.base_url)
+            self.source.url = build_default_source_url(self.rss_service.base_url)
         return self
+
+    @property
+    def wewe_rss(self) -> RSSServiceConfig:
+        return self.rss_service
 
     def runtime_feed(self) -> FeedConfig:
         return FeedConfig(
@@ -268,8 +334,15 @@ def default_config() -> AppConfig:
     runtime_paths = get_runtime_paths()
     return AppConfig(
         db_path=str(runtime_paths.db_path),
-        source=SourceConfig(url=build_default_source_url("http://localhost:4000")),
-        wewe_rss=WeWeRSSConfig(service_dir=str(runtime_paths.wewe_rss_dir)),
+        source=SourceConfig(url=build_default_source_url("http://127.0.0.1:4000")),
+        rss_service=RSSServiceConfig(
+            base_url="http://127.0.0.1:4000",
+            auth_code="",
+            port=4000,
+            host="127.0.0.1",
+            data_dir=str(runtime_paths.rss_service_data_dir),
+            log_file=str(runtime_paths.rss_service_log_path),
+        ),
         output=OutputConfig(
             briefing_dir=str(runtime_paths.output_dir),
             raw_archive_dir=str(runtime_paths.raw_archive_dir),
@@ -321,8 +394,9 @@ def _needs_file_migration(data: Any) -> bool:
         for key in (
             "accounts",
             "feeds",
+            "wewe_rss",
         )
-    ) or "source" not in data or _output_needs_migration(data) or _rss_needs_migration(data)
+    ) or "source" not in data or "rss_service" not in data or _output_needs_migration(data) or _rss_needs_migration(data) or _rss_service_needs_migration(data)
 
 
 def _output_needs_migration(data: dict[str, Any]) -> bool:
@@ -333,6 +407,21 @@ def _output_needs_migration(data: dict[str, Any]) -> bool:
 def _rss_needs_migration(data: dict[str, Any]) -> bool:
     rss = data.get("rss")
     return isinstance(rss, dict) and "max_articles_per_feed" in rss and "daily_article_limit" not in rss
+
+
+def _rss_service_needs_migration(data: dict[str, Any]) -> bool:
+    rss_service = data.get("rss_service")
+    if not isinstance(rss_service, dict):
+        return False
+    auth_code = str(rss_service.get("auth_code") or "").strip()
+    if auth_code and auth_code in LEGACY_RSS_SERVICE_AUTH_CODES:
+        return True
+    if auth_code:
+        return True
+    base_url = str(rss_service.get("base_url") or "").strip().lower()
+    if base_url.startswith("http://localhost:"):
+        return True
+    return False
 
 
 def _apply_runtime_path_migration(config: AppConfig) -> bool:
@@ -354,8 +443,20 @@ def _apply_runtime_path_migration(config: AppConfig) -> bool:
         config.output.raw_archive_dir = str(runtime_paths.raw_archive_dir)
         changed = True
 
-    if _needs_runtime_path_update(config.wewe_rss.service_dir, LEGACY_WEWE_RSS_DIRS):
-        config.wewe_rss.service_dir = str(runtime_paths.wewe_rss_dir)
+    if _needs_runtime_path_update(config.rss_service.data_dir, LEGACY_RSS_SERVICE_DATA_DIRS):
+        config.rss_service.data_dir = str(runtime_paths.rss_service_data_dir)
+        changed = True
+
+    if _needs_runtime_path_update(config.rss_service.log_file, LEGACY_RSS_SERVICE_LOG_FILES):
+        config.rss_service.log_file = str(runtime_paths.rss_service_log_path)
+        changed = True
+
+    if config.rss_service.auth_code.strip():
+        config.rss_service.auth_code = ""
+        changed = True
+
+    if config.rss_service.base_url.strip().lower().startswith("http://localhost:"):
+        config.rss_service.base_url = f"http://127.0.0.1:{config.rss_service.port}"
         changed = True
 
     return changed

@@ -1,0 +1,180 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <section class="hero">
+    <div class="hero-copy">
+      <div class="eyebrow">设置</div>
+      <h1 class="hero-title">把服务与设置留在幕后</h1>
+      <div class="hero-lead">公众号服务、AI 摘要、输出目录和自动运行都收在这里</div>
+    </div>
+  </section>
+
+  <div class="settings-grid">
+    <section class="settings-card">
+      <div>
+        <h2 class="settings-title">公众号服务</h2>
+        <div class="panel-copy">内置的 `wewe-rss` 作为隐藏组件存在。你只需要在这里查看状态、调整端口、打开后台或重启服务。</div>
+      </div>
+      <div class="status-list">
+        <div class="status-item">
+          <strong>运行时</strong>
+          <span class="status-pill {{ 'ok' if status.service.runtime_ok else 'bad' }}">{{ '已就绪' if status.service.runtime_ok else '缺失' }}</span>
+          <div class="status-detail">{{ status.service.runtime_detail }}</div>
+        </div>
+        <div class="status-item">
+          <strong>服务进程</strong>
+          <span class="status-pill {{ 'ok' if status.service.process_ok else 'warn' }}">{{ '运行中' if status.service.process_ok else '未运行' }}</span>
+          <div class="status-detail">{{ status.service.process_detail }}</div>
+        </div>
+        <div class="status-item">
+          <strong>后台与聚合源</strong>
+          <div class="status-detail">后台：{{ status.service.admin_url }}<br>聚合源：{{ status.service.feed_url }}<br>{{ status.source.detail }}</div>
+        </div>
+      </div>
+      <form method="post" action="/actions/service/save">
+        <div class="field">
+          <label>端口</label>
+          <input type="number" min="1" step="1" name="port" value="{{ config.rss_service.port }}">
+        </div>
+        <div class="field-note">默认通过 `127.0.0.1` 提供后台和 `all.atom`。修改端口后，聚合源地址会一起更新，后台也会直接打开。</div>
+        <div class="inline-actions">
+          <button class="primary" type="submit">保存服务设置</button>
+        </div>
+      </form>
+      <div class="inline-actions">
+        <form method="post" action="/actions/service/start"><button class="primary" type="submit">启动服务</button></form>
+        <form method="post" action="/actions/service/stop"><button class="secondary" type="submit">停止服务</button></form>
+        <form method="post" action="/actions/service/restart"><button class="secondary" type="submit">重启服务</button></form>
+        <form method="post" action="/actions/service/open-admin"><button class="secondary" type="submit">打开后台</button></form>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <div>
+        <h2 class="settings-title">AI 摘要</h2>
+        <div class="panel-copy">支持任意 OpenAI 兼容接口。保存时会自动做一次连通性检查。</div>
+      </div>
+      <form method="post" action="/actions/save-llm">
+        <div class="field-grid">
+          <div class="field">
+            <label>Base URL</label>
+            <input name="base_url" value="{{ config.llm.base_url }}">
+          </div>
+          <div class="field">
+            <label>Model</label>
+            <input name="model" value="{{ config.llm.model }}">
+          </div>
+        </div>
+        <div class="field">
+          <label>API Key</label>
+          <input
+            type="password"
+            name="api_key"
+            value=""
+            autocomplete="off"
+            placeholder="{% if llm_api_key_saved %}本地已保存密钥，留空则保持不变{% elif llm_uses_env_api_key %}将继续使用 OPENAI_API_KEY 环境变量{% else %}输入新的 API Key{% endif %}"
+          >
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label>超时秒数</label>
+            <input type="number" min="5" step="1" name="timeout_seconds" value="{{ config.llm.timeout_seconds }}">
+          </div>
+          <div class="field">
+            <label>重试次数</label>
+            <input type="number" min="0" step="1" name="retries" value="{{ config.llm.retries }}">
+          </div>
+        </div>
+        <div class="field-note">{{ status.llm.detail }}</div>
+        <div class="inline-actions">
+          <button class="primary" type="submit">保存并测试 AI</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="settings-card">
+      <div>
+        <h2 class="settings-title">输出与归档</h2>
+        <div class="panel-copy">Markdown 日报会按日期写入这个目录。原始 HTML 归档可以在高级配置里开启。</div>
+      </div>
+      <form method="post" action="/actions/save-output-dir">
+        <div class="field">
+          <label>Markdown 输出目录</label>
+          <input name="briefing_dir" value="{{ config.output.briefing_dir }}">
+        </div>
+        <div class="field-note">当前目录：{{ briefing_dir_display }}</div>
+        <div class="inline-actions">
+          <button class="primary" type="submit">保存输出目录</button>
+        </div>
+      </form>
+      <div class="inline-actions">
+        <form method="post" action="/actions/pick-output-dir"><button class="secondary" type="submit">选择目录</button></form>
+        <form method="post" action="/actions/open-output-dir"><button class="secondary" type="submit">打开目录</button></form>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <div>
+        <h2 class="settings-title">自动运行</h2>
+        <div class="panel-copy">按本机时间安装到 Windows 计划任务中。这里的文章上限也会影响“立即生成今天”。</div>
+      </div>
+      <form method="post" action="/actions/save-schedule">
+        <div class="field-grid">
+          <div class="field">
+            <label>小时</label>
+            <select name="run_hour">
+              {% for hour in range(0, 24) %}
+                <option value="{{ hour }}" {% if hour == schedule_hour %}selected{% endif %}>{{ '%02d' % hour }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label>分钟</label>
+            <select name="run_minute">
+              {% for minute in range(0, 60) %}
+                <option value="{{ minute }}" {% if minute == schedule_minute %}selected{% endif %}>{{ '%02d' % minute }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>每日文章上限</label>
+          <select name="daily_article_limit">
+            {% for option in daily_article_limit_options %}
+              <option value="{{ option.value }}" {% if option.value == daily_article_limit %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field-note">{{ status.schedule.detail }}<br>{{ status.schedule.daily_limit_label }}</div>
+        <div class="inline-actions">
+          <button class="primary" type="submit">保存自动运行设置</button>
+        </div>
+      </form>
+      <div class="inline-actions">
+        <form method="post" action="/actions/install-schedule"><input type="hidden" name="run_hour" value="{{ schedule_hour }}"><input type="hidden" name="run_minute" value="{{ schedule_minute }}"><input type="hidden" name="daily_article_limit" value="{{ daily_article_limit }}"><button class="success" type="submit">安装自动运行</button></form>
+        <form method="post" action="/actions/remove-schedule"><button class="warn" type="submit">移除自动运行</button></form>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <details class="settings-disclosure">
+        <summary>
+          <div>
+            <h2 class="settings-title">高级配置</h2>
+            <div class="panel-copy">保留给需要直接编辑 YAML 的时候</div>
+          </div>
+          <span class="settings-disclosure-toggle" data-closed-label="展开" data-open-label="收起" aria-hidden="true"></span>
+        </summary>
+        <form method="post" action="/actions/save-advanced">
+          <div class="field">
+            <label>config.yaml</label>
+            <textarea name="yaml_text">{{ yaml_text }}</textarea>
+          </div>
+          <div class="inline-actions">
+            <button class="primary" type="submit">保存高级配置</button>
+          </div>
+        </form>
+      </details>
+    </section>
+  </div>
+{% endblock %}

@@ -9,6 +9,7 @@ src_root = project_root / "src"
 gzhreader_root = src_root / "gzhreader"
 assets_root = project_root / "packaging" / "assets"
 app_icon = assets_root / "gzhreader.ico"
+wewe_rss_runtime_root = project_root / "build" / "wewe-rss-runtime"
 
 site_packages = next((Path(p) for p in sys.path if p and p.endswith("site-packages")), None)
 mypyc_binaries = []
@@ -22,7 +23,10 @@ common_datas = [
     (str(gzhreader_root / "static"), "gzhreader/static"),
     (str(project_root / "scripts" / "register_task.ps1"), "scripts"),
     (str(project_root / "scripts" / "unregister_task.ps1"), "scripts"),
+    (str(project_root / "THIRD_PARTY_NOTICES.md"), "."),
 ]
+if wewe_rss_runtime_root.exists():
+    common_datas.append((str(wewe_rss_runtime_root), "wewe-rss-runtime"))
 common_hiddenimports = sorted(
     set(
         collect_submodules("uvicorn")

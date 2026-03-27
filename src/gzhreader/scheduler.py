@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from .config import AppConfig
+from .platform_utils import hidden_process_kwargs
 from .runtime_paths import build_schedule_command, get_script_path
 
 TASK_NAME = "GZHReaderDaily"
@@ -29,7 +30,7 @@ def install_schedule(config: AppConfig, config_path: Path) -> str:
         "-TaskName",
         TASK_NAME,
     ]
-    completed = subprocess.run(args, capture_output=True, text=True, check=True)
+    completed = subprocess.run(args, capture_output=True, text=True, check=True, **hidden_process_kwargs())
     return completed.stdout.strip() or completed.stderr.strip()
 
 
@@ -44,7 +45,7 @@ def remove_schedule() -> str:
         "-TaskName",
         TASK_NAME,
     ]
-    completed = subprocess.run(args, capture_output=True, text=True, check=True)
+    completed = subprocess.run(args, capture_output=True, text=True, check=True, **hidden_process_kwargs())
     return completed.stdout.strip() or completed.stderr.strip()
 
 
@@ -53,6 +54,7 @@ def get_schedule_status(task_name: str = TASK_NAME) -> tuple[bool, str]:
         ["schtasks.exe", "/Query", "/TN", task_name, "/FO", "LIST", "/V"],
         capture_output=True,
         text=True,
+        **hidden_process_kwargs(),
     )
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "task query failed").strip()

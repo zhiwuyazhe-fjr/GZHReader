@@ -1,14 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
-import logging
-import os
-import re
-from urllib.parse import urlencode
-import webbrowser
 from html import escape
+import logging
+from pathlib import Path
+from urllib.parse import urlencode
 
 import yaml
 from fastapi import FastAPI, Form, Request
@@ -29,15 +26,63 @@ from .config import (
 )
 from .embedded_assets import HTMX_MIN_JS
 from .logging_utils import configure_logging
+from .platform_utils import open_local_path
 from .rss_client import RSSClient
+from .rss_service import BundledRSSServiceManager
 from .runtime_paths import get_resource_root, get_runtime_paths, resolve_config_path
 from .scheduler import get_schedule_status, install_schedule, remove_schedule
 from .service import ReaderService
 from .storage import Storage
 from .summarizer import OpenAICompatibleSummarizer, resolve_api_key
-from .wewe_rss import WeWeRSSManager
 
 LOGGER = logging.getLogger(__name__)
+LLM_API_KEY_PLACEHOLDER = "__GZHREADER_KEEP_EXISTING_API_KEY__"
+BRIEFING_FILENAME_RE = r"^\d{4}-\d{2}-\d{2}(?:_\d+)?\.md$"
+
+
+def _build_theme_state() -> dict[str, object]:
+    return {
+        "default": "system",
+        "options": [
+            {"value": "system", "label": "跟随系统"},
+            {"value": "light", "label": "浅色"},
+            {"value": "dark", "label": "深色"},
+        ],
+    }
+
+
+def _build_about_modal() -> dict[str, object]:
+    return {
+        "button_label": "关于",
+        "dialog_id": "about-dialog",
+        "tagline": "把公众号阅读整理成本地日报的阅读工作台",
+        "motivation_title": "开发动机",
+        "motivation_text": (
+            "GZHReader 想把每天零散掠过的公众号阅读，整理成一份可以安静回看的本地日报。"
+            "它不强调配置感，而是希望像一张编辑台，把阅读、摘要和归档收拢到同一个地方。"
+        ),
+        "feedback_title": "反馈",
+        "feedback_text": "关于页入口先保留到这里，后续可以继续补充反馈方式、支持入口和更多作者信息。",
+        "feedback_url": "",
+        "feedback_label": "",
+        "support_title": "支持项目",
+        "support_text": "如果这个工作台帮你省下了每天整理公众号阅读的时间，它就已经完成了最重要的价值。",
+        "support_url": "",
+        "support_label": "",
+        "author_title": "关于作者",
+        "author_name": "GZHReader 作者",
+        "author_lines": [
+            "专注把公众号阅读、摘要与归档做成更安静的一体化体验",
+            "本轮入口先做成可复用的 about 弹窗，后续内容可以继续细化",
+        ],
+        "author_url": "",
+        "author_label": "",
+        "footer_lines": [
+            "本地优先 · 每日简报 · 公众号阅读工作台",
+            "为能长期回看的阅读流保留一个更稳的桌面入口",
+        ],
+    }
+
 
 def _resolve_resource_dir(kind: str) -> Path:
     resource_root = get_resource_root()
@@ -52,78 +97,12 @@ def _resolve_resource_dir(kind: str) -> Path:
     return candidates[0]
 
 
-def _get_template_dir() -> Path:
-    return _resolve_resource_dir("templates")
+def _create_templates() -> Jinja2Templates:
+    return Jinja2Templates(directory=str(_resolve_resource_dir("templates")))
 
 
 def _get_static_dir() -> Path:
     return _resolve_resource_dir("static")
-
-
-def _create_templates() -> Jinja2Templates:
-    return Jinja2Templates(directory=str(_get_template_dir()))
-
-
-DOCKER_DOWNLOAD_URL = "https://docs.docker.com/desktop/setup/install/windows-install/"
-DOCKER_INSTALL_URL = "https://docs.docker.com/desktop/"
-BRIEFING_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:_\d+)?\.md$")
-LLM_API_KEY_PLACEHOLDER = "__GZHREADER_KEEP_EXISTING_API_KEY__"
-TERMINAL_NOTICE = "运行某些步骤时，程序可能会短暂打开终端或系统窗口。这是正常现象，不需要手动关闭，等待当前步骤完成即可。"
-ABOUT_TAGLINE = "把微信公众号阅读流，整理成一份真正有价值的 AI 日报"
-ABOUT_MOTIVATION_TEXT = (
-    "在信息过载的时代，“订阅”并不代表“拥有”。我开发 GZHReader 是为了打破公众号“阅后即焚”的困局，"
-    "利用大模型将海量推送深度提炼为整洁的本地 Markdown 日报。把阅读从“沙里淘金”的体力活，变成一种"
-    "高效、静谧的知识沉淀过程😘"
-)
-ABOUT_FEATURE_SUGGESTION_PLACEHOLDER = "功能建议入口预留中，后续会在这里补上直达链接。"
-ABOUT_FEEDBACK_ISSUE_URL = "https://github.com/zhiwuyazhe-fjr/GZHReader/issues/new"
-ABOUT_REPO_URL = "https://github.com/zhiwuyazhe-fjr/GZHReader"
-ABOUT_SUPPORT_TEXT = (
-    "GZHReader的成长，离不开你的每一次高效交互。如果它曾为你节省过一分钟，或带来过一次惊喜，请考虑支持它的未来。"
-    "每一份认可，都是我继续敲下下一行代码的动力💕"
-)
-ABOUT_AUTHOR_NAME = "zhiwuyazhe_fjr"
-ABOUT_AUTHOR_LINES = [
-    "📍 TJU | CS 在读",
-    "🚀 AI 探索者 | 预备役创业者",
-    "✨ Elon Musk 信徒",
-]
-ABOUT_AUTHOR_GITHUB_URL = "https://github.com/zhiwuyazhe-fjr"
-ABOUT_FOOTER_LINES = [
-    "感谢你把时间交给 GZHReader，愿它帮你把零散推送沉淀成真正值得回看的知识资产❤️",
-    "GZHReader · MIT License · 默认本地运行，配置与日报文件由你自己掌控",
-]
-
-
-def _build_llm_status(config: AppConfig) -> dict[str, object]:
-    api_key, api_key_source = resolve_api_key(config.llm)
-    has_endpoint = bool(config.llm.base_url.strip() and config.llm.model.strip())
-    api_key_saved = bool(config.llm.api_key.strip())
-    configured = bool(has_endpoint and api_key)
-
-    if configured:
-        if api_key_source == "config":
-            detail = "已在本地配置中保存 base_url / model / api_key。保存时会自动测试连通性。"
-        else:
-            detail = "已检测到 OPENAI_API_KEY 环境变量。当前界面不会回显该密钥，但运行和连通性测试会继续使用它。"
-    else:
-        detail = "请先填写 base_url / model，并提供本地 api_key 或 OPENAI_API_KEY。"
-
-    return {
-        "configured": configured,
-        "detail": detail,
-        "api_key_source": api_key_source,
-        "api_key_saved": api_key_saved,
-        "uses_env_api_key": api_key_source == "env",
-    }
-
-
-def _build_redacted_yaml(config: AppConfig) -> str:
-    payload = config.model_dump(mode="json", exclude={"feeds"})
-    llm_payload = payload.get("llm")
-    if isinstance(llm_payload, dict) and llm_payload.get("api_key"):
-        llm_payload["api_key"] = LLM_API_KEY_PLACEHOLDER
-    return yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
 
 
 @dataclass(slots=True)
@@ -133,23 +112,104 @@ class BriefingFile:
     path: str
 
 
-def _build_action_result(
-    *,
-    scope: str,
-    title: str,
-    message: str,
-    level: str,
-    step_id: str | None = None,
-) -> dict[str, str]:
-    result = {
-        "scope": scope,
-        "title": title,
-        "message": message,
-        "level": level,
+def _build_llm_status(config: AppConfig) -> dict[str, object]:
+    api_key, api_key_source = resolve_api_key(config.llm)
+    configured = bool(config.llm.base_url.strip() and config.llm.model.strip() and api_key)
+
+    if configured:
+        if api_key_source == "config":
+            detail = "AI 摘要配置已保存，本地密钥将继续用于生成摘要。"
+        else:
+            detail = "正在使用 OPENAI_API_KEY 环境变量生成摘要。"
+    else:
+        detail = "还没有完成 AI 摘要配置。"
+
+    return {
+        "configured": configured,
+        "detail": detail,
+        "api_key_source": api_key_source,
+        "api_key_saved": bool(config.llm.api_key.strip()),
+        "uses_env_api_key": api_key_source == "env",
     }
-    if step_id is not None:
-        result["step_id"] = step_id
-    return result
+
+
+def _build_redacted_yaml(config: AppConfig) -> str:
+    payload = config.model_dump(mode="json", exclude={"feeds"})
+    llm_payload = payload.get("llm")
+    if isinstance(llm_payload, dict) and llm_payload.get("api_key"):
+        llm_payload["api_key"] = LLM_API_KEY_PLACEHOLDER
+    rss_service_payload = payload.get("rss_service")
+    if isinstance(rss_service_payload, dict):
+        rss_service_payload.pop("auth_code", None)
+    return yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
+
+
+def _display_path(value: str) -> str:
+    try:
+        return str(Path(value).expanduser().resolve())
+    except Exception:
+        return value
+
+
+def _build_daily_time(run_hour: int, run_minute: int) -> str:
+    if not (0 <= run_hour <= 23):
+        raise ValueError("小时必须在 0 到 23 之间")
+    if not (0 <= run_minute <= 59):
+        raise ValueError("分钟必须在 0 到 59 之间")
+    return f"{run_hour:02d}:{run_minute:02d}"
+
+
+def _split_daily_time(value: str) -> tuple[int, int]:
+    hour, minute = value.split(":", 1)
+    return int(hour), int(minute)
+
+
+def _build_daily_limit_options(current_limit: str | int) -> list[dict[str, str]]:
+    normalized = normalize_daily_article_limit(current_limit)
+    values: list[str | int] = list(DAILY_ARTICLE_LIMIT_PRESETS)
+    if normalized not in values:
+        values = [normalized, *values]
+    options: list[dict[str, str]] = []
+    for value in values:
+        if value == "all":
+            label = "当天全部"
+        elif value == normalized and value not in DAILY_ARTICLE_LIMIT_PRESETS:
+            label = f"当前高级值：每天最多 {value} 篇"
+        else:
+            label = f"每天最多 {value} 篇"
+        options.append({"value": str(value), "label": label})
+    return options
+
+
+def _normalize_output_dir(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("保存目录不能为空")
+    return _display_path(cleaned)
+
+
+def _choose_output_dir(initial_dir: str) -> str | None:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:
+        raise RuntimeError("当前环境无法打开系统目录选择器，请手动输入目录路径。") from exc
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except Exception:
+        pass
+    try:
+        selected = filedialog.askdirectory(
+            initialdir=_display_path(initial_dir),
+            title="选择 Markdown 日报保存目录",
+            mustexist=False,
+        )
+    finally:
+        root.destroy()
+    return selected or None
 
 
 class DashboardBackend:
@@ -162,240 +222,140 @@ class DashboardBackend:
     def save_config(self, config: AppConfig) -> None:
         save_config(config, self.config_path)
 
-    def build_dashboard_context(
-        self,
-        *,
-        message: str = "",
-        level: str = "info",
-        action_result: dict | None = None,
-    ) -> dict:
+    def build_home_context(self, *, message: str = "", level: str = "info") -> dict[str, object]:
         config = self.load_config()
         configure_logging(config.output.log_level)
+        status = self.collect_status(config)
         briefings = self.list_briefings(config)
         latest_briefing = briefings[0] if briefings else None
-        status = self.collect_status(config)
-        llm_status = _build_llm_status(config)
-        wizard_steps = self.build_wizard_steps(config, status, latest_briefing, action_result=action_result)
-        docker_setup = self.build_docker_setup(status)
-        schedule_hour, schedule_minute = _split_daily_time(config.schedule.daily_time)
-        daily_article_limit = normalize_daily_article_limit(config.rss.daily_article_limit)
+        today_text = date.today().isoformat()
+        latest_is_today = latest_briefing is not None and latest_briefing.date_text == today_text
+
+        home_summary = {
+            "headline": "今日日报已经成刊" if latest_is_today else "今天的日报还在整理中",
+            "detail": (
+                f"最近一次日报：{latest_briefing.date_text}"
+                if latest_briefing
+                else "启动公众号服务后，点击“立即生成今天”即可开始整理今天的阅读流。"
+            ),
+            "status_label": "已成刊" if latest_is_today else "整理中",
+        }
         return {
-            "config": config,
-            "config_path": str(self.config_path.resolve()),
+            "page_title": "工作台",
             "message": message,
             "level": level,
+            "config": config,
             "status": status,
-            "wizard_steps": wizard_steps,
-            "briefings": briefings,
+            "home_summary": home_summary,
+            "quick_actions": [
+                {"label": "立即生成今天", "action": "/actions/run-now"},
+                {"label": "打开公众号后台", "action": "/actions/service/open-admin"},
+                {"label": "进入设置", "href": "/settings"},
+            ],
+            "recent_briefings": briefings[:7],
             "latest_briefing": latest_briefing,
-            "today": date.today().isoformat(),
+            "today": today_text,
+            "settings_snapshot": {
+                "llm": status["llm"]["detail"],
+                "schedule": status["schedule"]["detail"],
+                "output_dir": _display_path(config.output.briefing_dir),
+            },
+            "theme_state": {
+                "default": "system",
+                "options": [
+                    {"value": "system", "label": "跟随系统"},
+                    {"value": "light", "label": "浅色"},
+                    {"value": "dark", "label": "深色"},
+                ],
+            },
+            "about_modal": _build_about_modal(),
+            "app_version": __version__,
+        }
+
+    def build_settings_context(self, *, message: str = "", level: str = "info") -> dict[str, object]:
+        config = self.load_config()
+        configure_logging(config.output.log_level)
+        status = self.collect_status(config)
+        schedule_hour, schedule_minute = _split_daily_time(config.schedule.daily_time)
+        return {
+            "page_title": "设置",
+            "message": message,
+            "level": level,
+            "config": config,
+            "status": status,
             "yaml_text": _build_redacted_yaml(config),
             "schedule_hour": schedule_hour,
             "schedule_minute": schedule_minute,
-            "daily_article_limit": str(daily_article_limit),
-            "daily_article_limit_options": _build_daily_limit_options(daily_article_limit),
+            "daily_article_limit": str(normalize_daily_article_limit(config.rss.daily_article_limit)),
+            "daily_article_limit_options": _build_daily_limit_options(config.rss.daily_article_limit),
             "briefing_dir_display": _display_path(config.output.briefing_dir),
-            "docker_blocked": docker_setup["blocked"],
-            "docker_setup": docker_setup,
-            "llm_api_key_saved": llm_status["api_key_saved"],
-            "llm_api_key_source": llm_status["api_key_source"],
-            "llm_uses_env_api_key": llm_status["uses_env_api_key"],
-            "advanced_feedback": action_result if action_result and action_result.get("scope") == "advanced" else None,
-            "terminal_notice": TERMINAL_NOTICE,
+            "llm_api_key_saved": status["llm"]["api_key_saved"],
+            "llm_api_key_source": status["llm"]["api_key_source"],
+            "llm_uses_env_api_key": status["llm"]["uses_env_api_key"],
+            "theme_state": {
+                "default": "system",
+                "options": [
+                    {"value": "system", "label": "跟随系统"},
+                    {"value": "light", "label": "浅色"},
+                    {"value": "dark", "label": "深色"},
+                ],
+            },
+            "about_modal": _build_about_modal(),
             "app_version": __version__,
-            "about_tagline": ABOUT_TAGLINE,
-            "about_motivation_text": ABOUT_MOTIVATION_TEXT,
-            "about_feature_suggestion_placeholder": ABOUT_FEATURE_SUGGESTION_PLACEHOLDER,
-            "about_feedback_issue_url": ABOUT_FEEDBACK_ISSUE_URL,
-            "about_repo_url": ABOUT_REPO_URL,
-            "about_support_text": ABOUT_SUPPORT_TEXT,
-            "about_author_name": ABOUT_AUTHOR_NAME,
-            "about_author_lines": ABOUT_AUTHOR_LINES,
-            "about_author_github_url": ABOUT_AUTHOR_GITHUB_URL,
-            "about_footer_lines": ABOUT_FOOTER_LINES,
         }
 
-    def collect_status(self, config: AppConfig) -> dict:
-        manager = WeWeRSSManager(config.wewe_rss)
-        manager.ensure_scaffold(force=False)
-        runtime = manager.status_snapshot()
-
+    def collect_status(self, config: AppConfig) -> dict[str, object]:
+        service_manager = BundledRSSServiceManager(config.rss_service)
+        runtime = service_manager.status_snapshot()
         article_fetcher = ArticleContentFetcher(config.article_fetch, config.rss)
         http_ok, http_detail = article_fetcher.check_http_runtime()
         browser_ok, browser_detail = article_fetcher.check_browser_runtime()
-
-        schedule_ok, schedule_detail = get_schedule_status()
+        schedule_installed, schedule_detail = get_schedule_status()
         source_ok, source_detail = self._check_source(config)
-
         llm_status = _build_llm_status(config)
-        llm_configured = bool(llm_status["configured"])
-        llm_detail = str(llm_status["detail"])
-
-        environment_ready = runtime.docker_ok and http_ok and browser_ok
-        rss_service_ready = runtime.app_ok and runtime.mysql_ok and runtime.web_ok
 
         return {
-            "docker_ok": runtime.docker_ok,
-            "docker_detail": runtime.docker_detail,
-            "environment_ready": environment_ready,
-            "environment_items": [
-                {"label": "Docker Desktop", "ok": runtime.docker_ok, "detail": runtime.docker_detail},
-                {"label": "HTTP 正文抓取", "ok": http_ok, "detail": http_detail},
-                {"label": "浏览器正文抓取", "ok": browser_ok, "detail": browser_detail},
-            ],
-            "rss_service_ready": rss_service_ready,
-            "rss_service_items": [
-                {"label": "wewe-rss-app", "ok": runtime.app_ok, "detail": runtime.app_detail},
-                {"label": "mysql", "ok": runtime.mysql_ok, "detail": runtime.mysql_detail},
-                {"label": "wewe-rss Web 后台", "ok": runtime.web_ok, "detail": runtime.web_detail},
-            ],
-            "source_ok": source_ok,
-            "source_detail": source_detail,
-            "llm_configured": llm_configured,
-            "llm_detail": llm_detail,
-            "schedule_installed": schedule_ok,
-            "schedule_detail": schedule_detail,
-            "daily_article_limit_label": describe_daily_article_limit(config.rss.daily_article_limit),
-            "environment": [
-                {"label": "Docker Desktop", "ok": runtime.docker_ok, "detail": runtime.docker_detail},
-                {"label": "HTTP 正文抓取", "ok": http_ok, "detail": http_detail},
-                {"label": "浏览器正文抓取", "ok": browser_ok, "detail": browser_detail},
-            ],
-            "rss_service": [
-                {"label": "wewe-rss-app", "ok": runtime.app_ok, "detail": runtime.app_detail},
-                {"label": "mysql", "ok": runtime.mysql_ok, "detail": runtime.mysql_detail},
-                {"label": "wewe-rss Web 后台", "ok": runtime.web_ok, "detail": runtime.web_detail},
-            ],
+            "service": {
+                "runtime_ok": runtime.runtime_ok,
+                "runtime_detail": runtime.runtime_detail,
+                "process_ok": runtime.process_ok,
+                "process_detail": runtime.process_detail,
+                "web_ok": runtime.web_ok,
+                "web_detail": runtime.web_detail,
+                "admin_url": runtime.admin_url,
+                "feed_url": runtime.feed_url,
+            },
+            "article_fetch": {
+                "http_ok": http_ok,
+                "http_detail": http_detail,
+                "browser_ok": browser_ok,
+                "browser_detail": browser_detail,
+            },
+            "llm": llm_status,
+            "schedule": {
+                "installed": schedule_installed,
+                "detail": schedule_detail,
+                "daily_limit_label": describe_daily_article_limit(config.rss.daily_article_limit),
+            },
+            "source": {
+                "ok": source_ok,
+                "detail": source_detail,
+            },
         }
-
-    def build_docker_setup(self, status: dict) -> dict:
-        if status["docker_ok"]:
-            return {
-                "blocked": False,
-                "status_title": "Docker Desktop 已就绪",
-                "status_badge": "已通过",
-                "description": "Docker 已可用，现在可以继续后续向导步骤。",
-                "next_step": "继续执行第 2 步，启动 RSS 服务。",
-                "detail": status["docker_detail"],
-                "download_url": DOCKER_DOWNLOAD_URL,
-                "install_url": DOCKER_INSTALL_URL,
-            }
-
-        detail = status["docker_detail"]
-        title, description, next_step = _classify_docker_problem(detail)
-        return {
-            "blocked": True,
-            "status_title": title,
-            "status_badge": "需先处理",
-            "description": description,
-            "next_step": next_step,
-            "detail": detail,
-            "download_url": DOCKER_DOWNLOAD_URL,
-            "install_url": DOCKER_INSTALL_URL,
-        }
-
-    def build_wizard_steps(
-        self,
-        config: AppConfig,
-        status: dict,
-        latest_briefing: BriefingFile | None,
-        *,
-        action_result: dict | None = None,
-    ) -> list[dict]:
-        output_dir_display = _display_path(config.output.briefing_dir)
-        raw_steps = [
-            {
-                "id": "environment",
-                "number": 1,
-                "title": "检查环境",
-                "summary": "确认 Docker Desktop 已启动，并检查正文抓取依赖是否可用。",
-                "detail": "；".join(item["detail"] for item in status["environment_items"]),
-                "done": status["environment_ready"],
-            },
-            {
-                "id": "rss_service",
-                "number": 2,
-                "title": "启动 RSS 服务",
-                "summary": "启动 wewe-rss-app 和 mysql 两个容器。",
-                "detail": "；".join(item["detail"] for item in status["rss_service_items"]),
-                "done": status["rss_service_ready"],
-            },
-            {
-                "id": "subscription",
-                "number": 3,
-                "title": "登录并订阅公众号",
-                "summary": "打开 wewe-rss 后台，扫码登录并添加公众号订阅。",
-                "detail": status["source_detail"],
-                "done": status["source_ok"],
-            },
-            {
-                "id": "llm",
-                "number": 4,
-                "title": "配置并测试 LLM",
-                "summary": "填写大模型接口信息，保存时自动做一次连接测试。",
-                "detail": status["llm_detail"],
-                "done": status["llm_configured"],
-            },
-            {
-                "id": "output_dir",
-                "number": 5,
-                "title": "选择生成结果保存位置",
-                "summary": "先决定 Markdown 日报要保存到哪个目录。",
-                "detail": f"当前保存目录：{output_dir_display}",
-                "done": bool(str(config.output.briefing_dir).strip()),
-            },
-            {
-                "id": "schedule",
-                "number": 6,
-                "title": "设置每日任务",
-                "summary": "按本机时间安装到 Windows 计划任务中。",
-                "detail": f"{status['schedule_detail']}；当前设置：{status['daily_article_limit_label']}",
-                "done": status["schedule_installed"],
-            },
-            {
-                "id": "run_once",
-                "number": 7,
-                "title": "立即运行一次测试",
-                "summary": "读取聚合源、补抓正文、总结并生成 Markdown。",
-                "detail": f"最近一次已生成：{latest_briefing.date_text}" if latest_briefing else "还没有生成过日报。",
-                "done": latest_briefing is not None,
-            },
-            {
-                "id": "briefing",
-                "number": 8,
-                "title": "查看生成结果",
-                "summary": "最终产物只保留 Markdown 日报。",
-                "detail": latest_briefing.path if latest_briefing else f"结果文件会出现在 {output_dir_display}/YYYY-MM-DD.md。",
-                "done": latest_briefing is not None,
-            },
-        ]
-
-        current_index = next((index for index, step in enumerate(raw_steps) if not step["done"]), len(raw_steps) - 1)
-        unlocked = True
-        steps: list[dict] = []
-        for index, step in enumerate(raw_steps):
-            locked = not unlocked
-            current = index == current_index and not locked
-            action_feedback = None
-            if action_result and action_result.get("scope") == "wizard" and action_result.get("step_id") == step["id"]:
-                action_feedback = action_result
-            steps.append({**step, "locked": locked, "current": current, "action_feedback": action_feedback})
-            if not step["done"]:
-                unlocked = False
-        return steps
-
 
     def list_briefings(self, config: AppConfig) -> list[BriefingFile]:
         briefing_dir = Path(config.output.briefing_dir)
         if not briefing_dir.exists():
             return []
-        files = [
-            file
-            for file in briefing_dir.glob("*.md")
-            if file.is_file() and BRIEFING_FILENAME_RE.match(file.name)
-        ]
+        files = [file for file in briefing_dir.glob("*.md") if file.is_file()]
         files = sorted(files, key=lambda item: (item.stat().st_mtime, item.name), reverse=True)
-        return [BriefingFile(name=file.name, date_text=file.stem, path=str(file.resolve())) for file in files[:20]]
+        filtered: list[BriefingFile] = []
+        for file in files:
+            stem = file.stem
+            if len(stem) < 10 or stem[4] != "-" or stem[7] != "-":
+                continue
+            filtered.append(BriefingFile(name=file.name, date_text=stem, path=str(file.resolve())))
+        return filtered[:20]
 
     def read_briefing(self, briefing_date: str) -> tuple[Path, str]:
         config = self.load_config()
@@ -404,29 +364,53 @@ class DashboardBackend:
             raise FileNotFoundError(f"日报不存在：{file_path}")
         return file_path, file_path.read_text(encoding="utf-8")
 
-    def is_docker_ready(self) -> tuple[bool, str]:
+    def start_service(self) -> str:
         config = self.load_config()
-        return WeWeRSSManager(config.wewe_rss).check_docker()
+        return BundledRSSServiceManager(config.rss_service).start()
 
-    def start_rss(self) -> str:
+    def stop_service(self) -> str:
         config = self.load_config()
-        return WeWeRSSManager(config.wewe_rss).up()
+        return BundledRSSServiceManager(config.rss_service).stop()
 
-    def stop_rss(self) -> str:
+    def restart_service(self) -> str:
         config = self.load_config()
-        return WeWeRSSManager(config.wewe_rss).down()
+        return BundledRSSServiceManager(config.rss_service).restart()
 
-    def open_wewe_rss(self) -> str:
+    def open_service_admin(self) -> str:
         config = self.load_config()
-        webbrowser.open(config.wewe_rss.base_url)
-        return f"已尝试打开 {config.wewe_rss.base_url}。请在后台完成扫码登录和公众号订阅，然后回到这里点“刷新状态”。"
+        return BundledRSSServiceManager(config.rss_service).open_admin()
 
     def open_output_dir(self) -> str:
         config = self.load_config()
         output_dir = Path(config.output.briefing_dir).expanduser().resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
-        _open_local_path(output_dir)
-        return f"已尝试打开 Markdown 输出目录：{output_dir}"
+        open_local_path(output_dir)
+        return f"已尝试打开输出目录：{output_dir}"
+
+    def pick_output_dir(self) -> tuple[bool, str]:
+        config = self.load_config()
+        selected = _choose_output_dir(config.output.briefing_dir)
+        if not selected:
+            return False, "已取消目录选择。"
+        config.output.briefing_dir = _normalize_output_dir(selected)
+        self.save_config(config)
+        return True, f"输出目录已更新：{config.output.briefing_dir}"
+
+    def save_output_dir(self, briefing_dir: str) -> str:
+        config = self.load_config()
+        config.output.briefing_dir = _normalize_output_dir(briefing_dir)
+        self.save_config(config)
+        return f"输出目录已保存：{config.output.briefing_dir}"
+
+    def save_service_settings(self, *, port: int) -> str:
+        config = self.load_config()
+        config.rss_service.auth_code = ""
+        config.rss_service.port = port
+        config.rss_service.base_url = f"http://127.0.0.1:{port}"
+        if not config.source.url or config.source.url.endswith("/feeds/all.atom"):
+            config.source.url = f"{config.rss_service.base_url}/feeds/all.atom"
+        self.save_config(config)
+        return "公众号服务设置已保存。"
 
     def save_llm(
         self,
@@ -452,42 +436,22 @@ class DashboardBackend:
 
         ok, detail = OpenAICompatibleSummarizer(config.llm).check_connectivity()
         if ok:
-            return True, f"LLM 配置已保存并测试成功：{detail}"
-        return False, f"LLM 配置已保存，但测试失败：{detail}"
+            return True, f"AI 摘要配置已保存并测试成功：{detail}"
+        return False, f"AI 摘要配置已保存，但测试失败：{detail}"
 
     def save_schedule(self, *, run_hour: int, run_minute: int, daily_article_limit: str) -> str:
         config = self.load_config()
         config.schedule.daily_time = _build_daily_time(run_hour, run_minute)
         config.rss.daily_article_limit = normalize_daily_article_limit(daily_article_limit)
         self.save_config(config)
-        return f"计划任务时间已保存，当前文章数量设置：{describe_daily_article_limit(config.rss.daily_article_limit)}。"
+        return "自动运行时间与文章范围已保存。"
 
     def install_schedule(self, *, run_hour: int, run_minute: int, daily_article_limit: str) -> str:
         config = self.load_config()
         config.schedule.daily_time = _build_daily_time(run_hour, run_minute)
         config.rss.daily_article_limit = normalize_daily_article_limit(daily_article_limit)
         self.save_config(config)
-        detail = install_schedule(config, self.config_path)
-        return f"{detail}；当前文章数量设置：{describe_daily_article_limit(config.rss.daily_article_limit)}。"
-
-    def save_output_dir(self, briefing_dir: str) -> str:
-        config = self.load_config()
-        normalized_dir = _normalize_output_dir(briefing_dir)
-        Path(normalized_dir).mkdir(parents=True, exist_ok=True)
-        config.output.briefing_dir = normalized_dir
-        self.save_config(config)
-        return f"Markdown 保存目录已更新：{normalized_dir}"
-
-    def pick_output_dir(self) -> tuple[bool, str]:
-        config = self.load_config()
-        selected_dir = _choose_output_dir(config.output.briefing_dir)
-        if not selected_dir:
-            return False, "你还没有选择新目录，已保留当前 Markdown 保存位置。"
-        normalized_dir = _normalize_output_dir(selected_dir)
-        Path(normalized_dir).mkdir(parents=True, exist_ok=True)
-        config.output.briefing_dir = normalized_dir
-        self.save_config(config)
-        return True, f"Markdown 保存目录已更新：{normalized_dir}"
+        return install_schedule(config, self.config_path)
 
     def remove_schedule(self) -> str:
         return remove_schedule()
@@ -495,9 +459,10 @@ class DashboardBackend:
     def run_now(self, target_date: date) -> tuple[bool, str]:
         config = self.load_config()
         configure_logging(config.output.log_level)
+        storage = Storage(config.db_path)
         service = ReaderService(
             config=config,
-            storage=Storage(config.db_path),
+            storage=storage,
             rss_client=RSSClient(config.rss),
             summarizer=OpenAICompatibleSummarizer(config.llm),
             briefing_builder=BriefingBuilder(),
@@ -537,7 +502,7 @@ class DashboardBackend:
             return False, f"聚合源检查失败：{exc}"
         if ok:
             return True, f"聚合源可读取：{runtime_feed.url}；{detail}"
-        return False, f"请先在 wewe-rss 完成扫码登录和订阅后再刷新：{detail}"
+        return False, f"当前聚合源还不可用：{detail}"
 
 
 def create_app(*, config_path: Path | None = None, backend: DashboardBackend | None = None) -> FastAPI:
@@ -555,10 +520,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         return _render_error_response(
             request,
             title="页面暂时打不开",
-            description=(
-                "GZHReader 刚刚在加载这个页面时遇到了问题。你可以先返回首页再试一次；"
-                "如果问题持续存在，请把日志文件发给我。"
-            ),
+            description="GZHReader 刚刚在加载这个页面时遇到了问题，请稍后重试或查看日志。",
             status_code=500,
         )
 
@@ -575,241 +537,192 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         return Response(HTMX_MIN_JS, media_type="application/javascript")
 
     @web.get("/", response_class=HTMLResponse)
-    def dashboard(request: Request, message: str = "", level: str = "info"):
-        context = request.app.state.backend.build_dashboard_context(message=message, level=level)
-        return templates.TemplateResponse(request, "dashboard.html", context)
+    def home(request: Request, message: str = "", level: str = "info"):
+        context = request.app.state.backend.build_home_context(message=message, level=level)
+        return templates.TemplateResponse(request, "home.html", context)
 
-    @web.get("/partials/flash", response_class=HTMLResponse)
-    def flash_partial(request: Request, message: str = "", level: str = "info"):
-        return templates.TemplateResponse(request, "partials/flash.html", {"message": message, "level": level})
+    @web.get("/settings", response_class=HTMLResponse)
+    def settings(request: Request, message: str = "", level: str = "info"):
+        context = request.app.state.backend.build_settings_context(message=message, level=level)
+        return templates.TemplateResponse(request, "settings.html", context)
 
-    @web.get("/partials/wizard", response_class=HTMLResponse)
-    def wizard_partial(request: Request):
-        context = request.app.state.backend.build_dashboard_context()
-        return templates.TemplateResponse(request, "partials/wizard.html", context)
-
-    @web.get("/partials/docker-setup", response_class=HTMLResponse)
-    def docker_setup_partial(request: Request):
-        context = request.app.state.backend.build_dashboard_context()
-        return templates.TemplateResponse(request, "partials/docker_setup.html", context)
-
-    @web.get("/partials/main-content", response_class=HTMLResponse)
-    def main_content_partial(request: Request):
-        context = request.app.state.backend.build_dashboard_context()
-        return templates.TemplateResponse(request, "partials/main_content.html", context)
-
-    @web.get("/partials/briefings", response_class=HTMLResponse)
-    def briefings_partial(request: Request):
-        context = request.app.state.backend.build_dashboard_context()
-        return templates.TemplateResponse(request, "partials/briefings.html", context)
-
-    @web.get("/partials/advanced", response_class=HTMLResponse)
-    def advanced_partial(request: Request):
-        context = request.app.state.backend.build_dashboard_context()
-        return templates.TemplateResponse(request, "partials/advanced.html", context)
-
-    @web.get("/actions/refresh")
-    def refresh(request: Request):
-        return _after_action(request, "状态已刷新。", "info", step_id="environment", action_title="重新检查环境")
-
-    @web.post("/actions/start-rss")
-    def start_rss(request: Request):
-        blocked = _block_if_docker_unavailable(request, "启动 RSS 服务", step_id="rss_service")
-        if blocked is not None:
-            return blocked
+    @web.post("/actions/service/start")
+    def service_start():
         try:
-            detail = request.app.state.backend.start_rss()
-            return _after_action(request, f"RSS 服务已启动：{detail}", "success", step_id="rss_service", action_title="启动 RSS 服务")
+            detail = web.state.backend.start_service()
+            return _redirect("/", detail, "success")
         except Exception as exc:
-            return _after_action(request, f"启动 RSS 服务失败：{exc}", "error", step_id="rss_service", action_title="启动 RSS 服务")
+            return _redirect("/", f"启动服务失败：{exc}", "error")
 
-    @web.post("/actions/stop-rss")
-    def stop_rss(request: Request):
-        blocked = _block_if_docker_unavailable(request, "停止 RSS 服务", step_id="rss_service")
-        if blocked is not None:
-            return blocked
+    @web.post("/actions/service/stop")
+    def service_stop():
         try:
-            detail = request.app.state.backend.stop_rss()
-            return _after_action(request, f"RSS 服务已停止：{detail}", "success", step_id="rss_service", action_title="停止 RSS 服务")
+            detail = web.state.backend.stop_service()
+            return _redirect("/", detail, "success")
         except Exception as exc:
-            return _after_action(request, f"停止 RSS 服务失败：{exc}", "error", step_id="rss_service", action_title="停止 RSS 服务")
+            return _redirect("/", f"停止服务失败：{exc}", "error")
 
-    @web.post("/actions/open-wewe-rss")
-    def open_wewe_rss(request: Request):
-        blocked = _block_if_docker_unavailable(request, "打开 wewe-rss", step_id="subscription")
-        if blocked is not None:
-            return blocked
+    @web.post("/actions/service/restart")
+    def service_restart():
         try:
-            detail = request.app.state.backend.open_wewe_rss()
-            return _after_action(request, detail, "success", step_id="subscription", action_title="打开 wewe-rss 后台")
+            detail = web.state.backend.restart_service()
+            return _redirect("/settings", detail, "success")
         except Exception as exc:
-            return _after_action(request, f"打开 wewe-rss 后台失败：{exc}", "error", step_id="subscription", action_title="打开 wewe-rss 后台")
+            return _redirect("/settings", f"重启服务失败：{exc}", "error")
+
+    @web.post("/actions/service/open-admin")
+    def service_open_admin():
+        try:
+            detail = web.state.backend.open_service_admin()
+            return _redirect("/", detail, "success")
+        except Exception as exc:
+            return _redirect("/", f"打开后台失败：{exc}", "error")
+
+    @web.post("/actions/service/save")
+    def save_service_settings(port: int = Form(...)):
+        try:
+            detail = web.state.backend.save_service_settings(port=port)
+            return _redirect("/settings", detail, "success")
+        except Exception as exc:
+            return _redirect("/settings", f"保存公众号服务设置失败：{exc}", "error")
 
     @web.post("/actions/save-llm")
     def save_llm(
-        request: Request,
         base_url: str = Form(...),
         api_key: str = Form(...),
         model: str = Form(...),
         timeout_seconds: int = Form(...),
         retries: int = Form(...),
     ):
-        blocked = _block_if_docker_unavailable(request, "保存 LLM 配置", step_id="llm")
-        if blocked is not None:
-            return blocked
-        ok, detail = request.app.state.backend.save_llm(
+        ok, detail = web.state.backend.save_llm(
             base_url=base_url,
             api_key=api_key,
             model=model,
             timeout_seconds=timeout_seconds,
             retries=retries,
         )
-        return _after_action(request, detail, "success" if ok else "warning", step_id="llm", action_title="保存并测试 LLM")
+        return _redirect("/settings", detail, "success" if ok else "warning")
 
-    @web.post("/actions/save-schedule")
-    def save_schedule(
-        request: Request,
-        run_hour: int = Form(...),
-        run_minute: int = Form(...),
-        daily_article_limit: str = Form(...),
-    ):
-        blocked = _block_if_docker_unavailable(request, "保存计划任务", step_id="schedule")
-        if blocked is not None:
-            return blocked
+    @web.post("/actions/save-output-dir")
+    def save_output_dir(briefing_dir: str = Form(...)):
         try:
-            detail = request.app.state.backend.save_schedule(
-                run_hour=run_hour,
-                run_minute=run_minute,
-                daily_article_limit=daily_article_limit,
-            )
-            return _after_action(request, detail, "success", step_id="schedule", action_title="保存计划任务设置")
+            detail = web.state.backend.save_output_dir(briefing_dir)
+            return _redirect("/settings", detail, "success")
         except Exception as exc:
-            return _after_action(request, f"保存计划任务配置失败：{exc}", "error", step_id="schedule", action_title="保存计划任务设置")
+            return _redirect("/settings", f"保存输出目录失败：{exc}", "error")
+
+    @web.post("/actions/pick-output-dir")
+    def pick_output_dir():
+        try:
+            ok, detail = web.state.backend.pick_output_dir()
+            return _redirect("/settings", detail, "success" if ok else "info")
+        except Exception as exc:
+            return _redirect("/settings", f"选择输出目录失败：{exc}", "error")
+
+    @web.post("/actions/open-output-dir")
+    def open_output_dir():
+        try:
+            detail = web.state.backend.open_output_dir()
+            return _redirect("/", detail, "success")
+        except Exception as exc:
+            return _redirect("/", f"打开输出目录失败：{exc}", "error")
 
     @web.post("/actions/install-schedule")
     def install_schedule_action(
-        request: Request,
         run_hour: int = Form(...),
         run_minute: int = Form(...),
         daily_article_limit: str = Form(...),
-        action_title: str = Form("安装计划任务"),
     ):
-        blocked = _block_if_docker_unavailable(request, "安装计划任务", step_id="schedule")
-        if blocked is not None:
-            return blocked
         try:
-            detail = request.app.state.backend.install_schedule(
+            detail = web.state.backend.install_schedule(
                 run_hour=run_hour,
                 run_minute=run_minute,
                 daily_article_limit=daily_article_limit,
             )
-            return _after_action(request, detail, "success", step_id="schedule", action_title=action_title)
+            return _redirect("/settings", detail, "success")
         except Exception as exc:
-            return _after_action(request, f"安装计划任务失败：{exc}", "error", step_id="schedule", action_title=action_title)
-
-    @web.post("/actions/save-output-dir")
-    def save_output_dir(request: Request, briefing_dir: str = Form(...)):
-        try:
-            detail = request.app.state.backend.save_output_dir(briefing_dir)
-            return _after_action(request, detail, "success", step_id="output_dir", action_title="保存 Markdown 目录")
-        except Exception as exc:
-            return _after_action(request, f"保存 Markdown 目录失败：{exc}", "error", step_id="output_dir", action_title="保存 Markdown 目录")
-
-    @web.post("/actions/pick-output-dir")
-    async def pick_output_dir(request: Request):
-        try:
-            ok, detail = request.app.state.backend.pick_output_dir()
-            return _after_action(request, detail, "success" if ok else "info", step_id="output_dir", action_title="选择 Markdown 目录")
-        except Exception as exc:
-            return _after_action(request, f"打开目录选择器失败：{exc}", "error", step_id="output_dir", action_title="选择 Markdown 目录")
-
-    @web.post("/actions/open-output-dir")
-    def open_output_dir(request: Request):
-        try:
-            detail = request.app.state.backend.open_output_dir()
-            return _after_action(request, detail, "success", step_id="output_dir", action_title="打开 Markdown 目录")
-        except Exception as exc:
-            return _after_action(request, f"打开 Markdown 目录失败：{exc}", "error", step_id="output_dir", action_title="打开 Markdown 目录")
+            return _redirect("/settings", f"安装自动运行失败：{exc}", "error")
 
     @web.post("/actions/remove-schedule")
-    def remove_schedule_action(
-        request: Request,
-        scope: str = Form("advanced"),
-        step_id: str | None = Form(None),
-        action_title: str = Form("删除计划任务"),
+    def remove_schedule_action():
+        try:
+            detail = web.state.backend.remove_schedule()
+            return _redirect("/settings", detail, "success")
+        except Exception as exc:
+            return _redirect("/settings", f"移除自动运行失败：{exc}", "error")
+
+    @web.post("/actions/save-schedule")
+    def save_schedule_action(
+        run_hour: int = Form(...),
+        run_minute: int = Form(...),
+        daily_article_limit: str = Form(...),
     ):
         try:
-            detail = request.app.state.backend.remove_schedule()
-            return _after_action(request, detail, "success", step_id=step_id, scope=scope, action_title=action_title)
+            detail = web.state.backend.save_schedule(
+                run_hour=run_hour,
+                run_minute=run_minute,
+                daily_article_limit=daily_article_limit,
+            )
+            return _redirect("/settings", detail, "success")
         except Exception as exc:
-            return _after_action(request, f"删除计划任务失败：{exc}", "error", step_id=step_id, scope=scope, action_title=action_title)
+            return _redirect("/settings", f"保存自动运行设置失败：{exc}", "error")
 
     @web.post("/actions/run-now")
-    def run_now(
-        request: Request,
-        target_date: str = Form(...),
-        step_id: str | None = Form("run_once"),
-        action_title: str = Form("立即运行测试"),
-    ):
-        blocked = _block_if_docker_unavailable(request, action_title, step_id=step_id)
-        if blocked is not None:
-            return blocked
+    def run_now(target_date: str = Form(...)):
         try:
-            detail_date = date.fromisoformat(target_date)
-            ok, detail = request.app.state.backend.run_now(detail_date)
-            return _after_action(request, detail, "success" if ok else "warning", step_id=step_id, action_title=action_title)
+            parsed_date = date.fromisoformat(target_date)
+            ok, detail = web.state.backend.run_now(parsed_date)
+            return _redirect("/", detail, "success" if ok else "warning")
         except Exception as exc:
-            return _after_action(request, f"立即运行失败：{exc}", "error", step_id=step_id, action_title=action_title)
+            return _redirect("/", f"立即运行失败：{exc}", "error")
 
     @web.post("/actions/save-advanced")
-    def save_advanced(request: Request, yaml_text: str = Form(...)):
+    def save_advanced(yaml_text: str = Form(...)):
         try:
-            detail = request.app.state.backend.save_advanced_yaml(yaml_text)
-            return _after_action(request, detail, "success", scope="advanced", action_title="保存高级配置")
+            detail = web.state.backend.save_advanced_yaml(yaml_text)
+            return _redirect("/settings", detail, "success")
         except Exception as exc:
-            return _after_action(request, f"保存高级配置失败：{exc}", "error", scope="advanced", action_title="保存高级配置")
+            return _redirect("/settings", f"保存高级配置失败：{exc}", "error")
 
     @web.get("/briefings/latest")
-    def latest_briefing(request: Request):
-        briefings = request.app.state.backend.build_dashboard_context()["briefings"]
+    def latest_briefing():
+        context = web.state.backend.build_home_context()
+        briefings = context["recent_briefings"]
         if not briefings:
-            return _after_action(request, "还没有生成过 Markdown 日报。", "warning", step_id="briefing", action_title="查看最新日报")
-        return RedirectResponse(url=f"/briefings/{briefings[0].date_text}", status_code=303)
+            return _redirect("/", "还没有生成过日报。", "warning")
+        latest = briefings[0]
+        return RedirectResponse(url=f"/briefings/{latest.date_text}", status_code=303)
 
     @web.get("/briefings/{briefing_date}", response_class=HTMLResponse)
     def view_briefing(request: Request, briefing_date: str):
         try:
-            file_path, content = request.app.state.backend.read_briefing(briefing_date)
+            file_path, content = web.state.backend.read_briefing(briefing_date)
         except Exception as exc:
-            return _after_action(request, f"打开日报失败：{exc}", "error", step_id="briefing", action_title="打开日报")
+            return _redirect("/", f"打开日报失败：{exc}", "error")
         return templates.TemplateResponse(
             request,
             "briefing.html",
             {
+                "page_title": briefing_date,
                 "briefing_date": briefing_date,
                 "briefing_path": str(file_path),
                 "content": content,
+                "theme_state": _build_theme_state(),
+                "about_modal": _build_about_modal(),
+                "app_version": __version__,
             },
         )
 
     return web
 
 
+def _redirect(path: str, message: str, level: str) -> RedirectResponse:
+    query = urlencode({"message": message, "level": level})
+    return RedirectResponse(url=f"{path}?{query}", status_code=303)
+
+
 def _render_error_response(request: Request, *, title: str, description: str, status_code: int = 500) -> HTMLResponse:
     log_path = get_runtime_paths().logs_dir / "gzhreader.log"
-    context = {
-        "error_title": title,
-        "error_description": description,
-        "request_path": request.url.path,
-        "log_path": str(log_path),
-    }
-    templates = getattr(request.app.state, "templates", None)
-    if templates is not None:
-        try:
-            return templates.TemplateResponse(request, "error.html", context, status_code=status_code)
-        except Exception:
-            LOGGER.exception("Failed to render branded error page")
-
     safe_title = escape(title)
     safe_description = escape(description)
     safe_request_path = escape(str(request.url.path))
@@ -821,16 +734,16 @@ def _render_error_response(request: Request, *, title: str, description: str, st
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{safe_title}</title>
   <style>
-    body {{ margin: 0; font-family: "Microsoft YaHei", "Segoe UI", sans-serif; background: linear-gradient(180deg, #eef4ff 0%, #f7faff 100%); color: #10233f; }}
+    body {{ margin: 0; font-family: "Segoe UI", "Noto Sans SC", sans-serif; background: #f5efe5; color: #1d1813; }}
     .shell {{ max-width: 760px; margin: 0 auto; padding: 48px 20px; }}
-    .card {{ background: #fff; border: 1px solid #d9e3f2; border-radius: 28px; padding: 28px; box-shadow: 0 22px 48px rgba(15, 23, 42, 0.08); }}
+    .card {{ background: #fffef9; border: 1px solid #d8cdbf; border-radius: 28px; padding: 28px; box-shadow: 0 22px 48px rgba(60, 45, 28, 0.08); }}
     h1 {{ margin: 0 0 12px; font-size: 30px; }}
-    p {{ line-height: 1.8; color: #51657f; }}
-    .meta {{ margin-top: 18px; padding: 14px 16px; border-radius: 18px; background: #f8fbff; border: 1px solid #dbeafe; color: #35537a; line-height: 1.8; overflow-wrap: anywhere; }}
+    p {{ line-height: 1.8; color: #564b41; }}
+    .meta {{ margin-top: 18px; padding: 14px 16px; border-radius: 18px; background: #f7f1e7; border: 1px solid #e3d7c7; color: #5a4635; line-height: 1.8; overflow-wrap: anywhere; }}
     .actions {{ display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }}
     .button {{ display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 14px; text-decoration: none; font-weight: 600; }}
-    .button.primary {{ background: linear-gradient(135deg, #1d4ed8, #2563eb); color: #fff; }}
-    .button.secondary {{ background: #eef4ff; color: #173b70; }}
+    .button.primary {{ background: #3b2f28; color: #fffef9; }}
+    .button.secondary {{ background: #efe5d8; color: #3d3028; }}
   </style>
 </head>
 <body>
@@ -849,146 +762,3 @@ def _render_error_response(request: Request, *, title: str, description: str, st
 </html>
 """
     return HTMLResponse(html, status_code=status_code)
-
-
-def _after_action(
-    request: Request,
-    message: str,
-    level: str,
-    *,
-    step_id: str | None = None,
-    action_title: str = "最近操作",
-    scope: str = "wizard",
-):
-    if request.headers.get("HX-Request") == "true":
-        action_result = _build_action_result(
-            scope=scope,
-            title=action_title,
-            message=message,
-            level=level,
-            step_id=step_id,
-        )
-        context = request.app.state.backend.build_dashboard_context(message=message, level=level, action_result=action_result)
-        return request.app.state.templates.TemplateResponse(request, "partials/action_updates.html", context)
-    return _redirect("/", message, level)
-
-
-def _redirect(path: str, message: str, level: str) -> RedirectResponse:
-    query = urlencode({"message": message, "level": level})
-    return RedirectResponse(url=f"{path}?{query}", status_code=303)
-
-
-def _block_if_docker_unavailable(
-    request: Request,
-    action_name: str,
-    *,
-    step_id: str | None = None,
-    scope: str = "wizard",
-):
-    docker_ok, docker_detail = request.app.state.backend.is_docker_ready()
-    if docker_ok:
-        return None
-    return _after_action(
-        request,
-        f"Docker Desktop 还没准备好，暂时不能{action_name}。{docker_detail}",
-        "warning",
-        step_id=step_id,
-        action_title=action_name,
-        scope=scope,
-    )
-
-
-def _classify_docker_problem(detail: str) -> tuple[str, str, str]:
-    normalized = detail.lower()
-    if "docker 不可用" in detail and ("not found" in normalized or "winerror 2" in normalized or "找不到" in detail):
-        return (
-            "这台电脑还没有安装 Docker Desktop",
-            "GZHReader 需要 Docker Desktop 来启动 wewe-rss-app 和 mysql。先装好它，后面的 RSS 服务才能一键启动。",
-            "先点击“下载 Docker Desktop”，安装完成后启动它，再回来点“重新检测”。",
-        )
-    if "引擎不可用" in detail:
-        return (
-            "Docker Desktop 已安装，但引擎还没准备好",
-            "通常表示 Docker Desktop 还没启动完成，或者 Docker Engine 当前没有运行。",
-            "请先打开 Docker Desktop，等它显示 Engine running 后，再回来点“重新检测”。",
-        )
-    return (
-        "Docker 当前不可用",
-        "GZHReader 需要 Docker Desktop 来启动 wewe-rss-app 和 mysql。",
-        "请先安装并启动 Docker Desktop，再回来点“重新检测”。",
-    )
-
-
-def _display_path(value: str) -> str:
-    try:
-        return str(Path(value).expanduser().resolve())
-    except Exception:
-        return value
-
-
-def _normalize_output_dir(value: str) -> str:
-    cleaned = value.strip()
-    if not cleaned:
-        raise ValueError("保存目录不能为空")
-    return _display_path(cleaned)
-
-
-def _choose_output_dir(initial_dir: str) -> str | None:
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except Exception as exc:
-        raise RuntimeError("当前环境无法打开系统目录选择器，请手动输入目录路径。") from exc
-
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        root.attributes("-topmost", True)
-    except Exception:
-        pass
-    try:
-        selected = filedialog.askdirectory(
-            initialdir=_display_path(initial_dir),
-            title="选择 Markdown 日报保存目录",
-            mustexist=False,
-        )
-    finally:
-        root.destroy()
-    return selected or None
-
-
-def _open_local_path(path: Path) -> None:
-    if hasattr(os, "startfile"):
-        os.startfile(str(path))  # type: ignore[attr-defined]
-        return
-    webbrowser.open(path.resolve().as_uri())
-
-
-def _split_daily_time(value: str) -> tuple[int, int]:
-    hour, minute = value.split(":", 1)
-    return int(hour), int(minute)
-
-
-def _build_daily_limit_options(current_limit: str | int) -> list[dict[str, str]]:
-    normalized = normalize_daily_article_limit(current_limit)
-    values: list[str | int] = list(DAILY_ARTICLE_LIMIT_PRESETS)
-    if normalized not in values:
-        values = [normalized, *values]
-    options: list[dict[str, str]] = []
-    for value in values:
-        if value == "all":
-            label = "当天全部"
-        elif value == normalized and value not in DAILY_ARTICLE_LIMIT_PRESETS:
-            label = f"当前高级值：每天最多 {value} 篇"
-        else:
-            label = f"每天最多 {value} 篇"
-        options.append({"value": str(value), "label": label})
-    return options
-
-
-def _build_daily_time(run_hour: int, run_minute: int) -> str:
-    if not (0 <= run_hour <= 23):
-        raise ValueError("小时必须在 0 到 23 之间")
-    if not (0 <= run_minute <= 59):
-        raise ValueError("分钟必须在 0 到 59 之间")
-    return f"{run_hour:02d}:{run_minute:02d}"

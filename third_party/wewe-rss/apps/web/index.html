@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="{{ iconUrl }}" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>公众号后台</title>
+    <meta
+      name="description"
+      content="GZHReader 内置的公众号后台，用于维护订阅、账号与聚合源"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      window.__WEWE_RSS_SERVER_ORIGIN_URL__ = '{{ weweRssServerOriginUrl }}';
+      window.__WEWE_RSS_ENABLED_AUTH_CODE__ = {{#if enabledAuthCode}}true{{else}}false{{/if}};
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

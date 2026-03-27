@@ -1,46 +1,60 @@
-from pathlib import Path
-
 from gzhreader import config as config_module
 from gzhreader.config import default_config, ensure_config
 from gzhreader.runtime_paths import RuntimePaths, build_schedule_command
 import gzhreader.runtime_paths as runtime_paths_module
 
 
-def test_default_config_uses_runtime_paths(monkeypatch, tmp_path) -> None:
-    runtime_paths = RuntimePaths(
+def _runtime_paths(tmp_path):
+    return RuntimePaths(
         state_dir=tmp_path / "state",
         config_path=tmp_path / "state" / "config.yaml",
         data_dir=tmp_path / "state" / "data",
         db_path=tmp_path / "state" / "data" / "gzhreader.db",
-        infra_dir=tmp_path / "state" / "infra",
-        wewe_rss_dir=tmp_path / "state" / "infra" / "wewe-rss",
+        rss_service_dir=tmp_path / "state" / "wewe-rss",
+        rss_service_data_dir=tmp_path / "state" / "wewe-rss" / "data",
+        rss_service_db_path=tmp_path / "state" / "wewe-rss" / "data" / "wewe-rss.db",
+        rss_service_pid_file=tmp_path / "state" / "wewe-rss" / "wewe-rss.pid",
+        rss_service_log_path=tmp_path / "state" / "logs" / "wewe-rss.log",
         output_dir=tmp_path / "Documents" / "GZHReader",
         raw_archive_dir=tmp_path / "state" / "output" / "raw",
         logs_dir=tmp_path / "state" / "logs",
         resource_dir=tmp_path,
+        bundled_wewe_rss_source_dir=tmp_path / "third_party" / "wewe-rss",
+        bundled_wewe_rss_runtime_dir=tmp_path / "bundle" / "wewe-rss-runtime",
     )
+
+
+def test_default_config_uses_runtime_paths(monkeypatch, tmp_path) -> None:
+    runtime_paths = _runtime_paths(tmp_path)
     monkeypatch.setattr(config_module, "get_runtime_paths", lambda: runtime_paths)
 
     cfg = default_config()
 
     assert cfg.db_path == str(runtime_paths.db_path)
-    assert cfg.wewe_rss.service_dir == str(runtime_paths.wewe_rss_dir)
+    assert cfg.rss_service.data_dir == str(runtime_paths.rss_service_data_dir)
+    assert cfg.rss_service.log_file == str(runtime_paths.rss_service_log_path)
     assert cfg.output.briefing_dir == str(runtime_paths.output_dir)
     assert cfg.output.raw_archive_dir == str(runtime_paths.raw_archive_dir)
 
 
 def test_ensure_config_migrates_legacy_relative_paths_in_frozen_mode(monkeypatch, tmp_path) -> None:
+    runtime_paths = _runtime_paths(tmp_path)
     runtime_paths = RuntimePaths(
         state_dir=tmp_path / "AppData" / "Roaming" / "GZHReader",
         config_path=tmp_path / "AppData" / "Roaming" / "GZHReader" / "config.yaml",
         data_dir=tmp_path / "AppData" / "Roaming" / "GZHReader" / "data",
         db_path=tmp_path / "AppData" / "Roaming" / "GZHReader" / "data" / "gzhreader.db",
-        infra_dir=tmp_path / "AppData" / "Roaming" / "GZHReader" / "infra",
-        wewe_rss_dir=tmp_path / "AppData" / "Roaming" / "GZHReader" / "infra" / "wewe-rss",
+        rss_service_dir=tmp_path / "AppData" / "Roaming" / "GZHReader" / "wewe-rss",
+        rss_service_data_dir=tmp_path / "AppData" / "Roaming" / "GZHReader" / "wewe-rss" / "data",
+        rss_service_db_path=tmp_path / "AppData" / "Roaming" / "GZHReader" / "wewe-rss" / "data" / "wewe-rss.db",
+        rss_service_pid_file=tmp_path / "AppData" / "Roaming" / "GZHReader" / "wewe-rss" / "wewe-rss.pid",
+        rss_service_log_path=tmp_path / "AppData" / "Roaming" / "GZHReader" / "logs" / "wewe-rss.log",
         output_dir=tmp_path / "Documents" / "GZHReader",
         raw_archive_dir=tmp_path / "AppData" / "Roaming" / "GZHReader" / "output" / "raw",
         logs_dir=tmp_path / "AppData" / "Roaming" / "GZHReader" / "logs",
         resource_dir=tmp_path,
+        bundled_wewe_rss_source_dir=tmp_path / "third_party" / "wewe-rss",
+        bundled_wewe_rss_runtime_dir=tmp_path / "bundle" / "wewe-rss-runtime",
     )
     monkeypatch.setattr(config_module, "is_frozen_app", lambda: True)
     monkeypatch.setattr(config_module, "get_runtime_paths", lambda: runtime_paths)
@@ -50,7 +64,7 @@ def test_ensure_config_migrates_legacy_relative_paths_in_frozen_mode(monkeypatch
         """
 source:
   mode: aggregate
-  url: http://localhost:4000/feeds/all.atom
+  url: http://127.0.0.1:4000/feeds/all.atom
 db_path: ./data/gzhreader.db
 wewe_rss:
   service_dir: ./infra/wewe-rss
@@ -64,7 +78,8 @@ output:
     cfg = ensure_config(config_path)
 
     assert cfg.db_path == str(runtime_paths.db_path)
-    assert cfg.wewe_rss.service_dir == str(runtime_paths.wewe_rss_dir)
+    assert cfg.rss_service.data_dir == str(runtime_paths.rss_service_data_dir)
+    assert cfg.rss_service.log_file == str(runtime_paths.rss_service_log_path)
     assert cfg.output.briefing_dir == str(runtime_paths.output_dir)
     assert cfg.output.raw_archive_dir == str(runtime_paths.raw_archive_dir)
     assert (tmp_path / "config.yaml.bak").exists()

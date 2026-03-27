@@ -18,12 +18,17 @@ class RuntimePaths:
     config_path: Path
     data_dir: Path
     db_path: Path
-    infra_dir: Path
-    wewe_rss_dir: Path
+    rss_service_dir: Path
+    rss_service_data_dir: Path
+    rss_service_db_path: Path
+    rss_service_pid_file: Path
+    rss_service_log_path: Path
     output_dir: Path
     raw_archive_dir: Path
     logs_dir: Path
     resource_dir: Path
+    bundled_wewe_rss_source_dir: Path
+    bundled_wewe_rss_runtime_dir: Path
 
 
 @dataclass(slots=True)
@@ -69,7 +74,7 @@ def get_runtime_paths() -> RuntimePaths:
     resource_dir = get_resource_root()
     if is_frozen_app():
         data_dir = state_dir / "data"
-        infra_dir = state_dir / "infra"
+        rss_service_dir = state_dir / "wewe-rss"
         output_dir = get_documents_root()
         raw_archive_dir = state_dir / "output" / "raw"
         logs_dir = state_dir / "logs"
@@ -77,25 +82,35 @@ def get_runtime_paths() -> RuntimePaths:
     else:
         repo_root = get_repo_root()
         data_dir = repo_root / "data"
-        infra_dir = repo_root / "infra"
+        rss_service_dir = repo_root / ".runtime" / "wewe-rss"
         output_dir = repo_root / "output" / "briefings"
         raw_archive_dir = repo_root / "output" / "raw"
         logs_dir = repo_root / "logs"
         config_path = repo_root / "config.yaml"
 
-    wewe_rss_dir = infra_dir / "wewe-rss"
     db_path = data_dir / "gzhreader.db"
+    rss_service_data_dir = rss_service_dir / "data"
+    rss_service_db_path = rss_service_data_dir / "wewe-rss.db"
+    rss_service_pid_file = rss_service_dir / "wewe-rss.pid"
+    rss_service_log_path = logs_dir / "wewe-rss.log"
+    bundled_wewe_rss_source_dir = get_repo_root() / "third_party" / "wewe-rss"
+    bundled_wewe_rss_runtime_dir = resource_dir / "wewe-rss-runtime"
     return RuntimePaths(
         state_dir=state_dir,
         config_path=config_path,
         data_dir=data_dir,
         db_path=db_path,
-        infra_dir=infra_dir,
-        wewe_rss_dir=wewe_rss_dir,
+        rss_service_dir=rss_service_dir,
+        rss_service_data_dir=rss_service_data_dir,
+        rss_service_db_path=rss_service_db_path,
+        rss_service_pid_file=rss_service_pid_file,
+        rss_service_log_path=rss_service_log_path,
         output_dir=output_dir,
         raw_archive_dir=raw_archive_dir,
         logs_dir=logs_dir,
         resource_dir=resource_dir,
+        bundled_wewe_rss_source_dir=bundled_wewe_rss_source_dir,
+        bundled_wewe_rss_runtime_dir=bundled_wewe_rss_runtime_dir,
     )
 
 
@@ -104,7 +119,8 @@ def ensure_runtime_dirs(paths: RuntimePaths | None = None) -> RuntimePaths:
     for directory in (
         runtime_paths.state_dir,
         runtime_paths.data_dir,
-        runtime_paths.wewe_rss_dir,
+        runtime_paths.rss_service_dir,
+        runtime_paths.rss_service_data_dir,
         runtime_paths.output_dir,
         runtime_paths.logs_dir,
     ):

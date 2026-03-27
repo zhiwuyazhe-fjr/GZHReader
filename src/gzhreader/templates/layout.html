@@ -1,0 +1,954 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="system">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ page_title }} · GZHReader{% endblock %}</title>
+  <meta name="theme-color" content="#f4efe6">
+  <link rel="icon" type="image/svg+xml" href="/static/brand/gzhreader-icon.svg">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4efe6;
+      --bg-elevated: rgba(255, 251, 245, 0.9);
+      --panel: #fffaf3;
+      --panel-strong: #f8f1e6;
+      --line: #d6c8b6;
+      --line-strong: #b9a892;
+      --text: #241b14;
+      --text-soft: #5f5143;
+      --text-muted: #7a6b5d;
+      --accent: #6a3f2d;
+      --accent-soft: rgba(106, 63, 45, 0.12);
+      --accent-2: #57653e;
+      --ok: #3f5e37;
+      --warn: #936a1a;
+      --danger: #8a4031;
+      --shadow: 0 18px 60px rgba(46, 30, 18, 0.08);
+      --radius-xl: 34px;
+      --radius-lg: 24px;
+      --radius-md: 18px;
+      --radius-sm: 14px;
+      --content-width: 1180px;
+      --nav-height: 84px;
+      --body-font: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --display-font: "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
+    }
+    :root[data-theme="dark"] {
+      --bg: #191410;
+      --bg-elevated: rgba(29, 23, 18, 0.86);
+      --panel: #201915;
+      --panel-strong: #261e19;
+      --line: #43372e;
+      --line-strong: #5d4b3f;
+      --text: #f3ece4;
+      --text-soft: #d1c2b4;
+      --text-muted: #aa9b8d;
+      --accent: #d2a276;
+      --accent-soft: rgba(210, 162, 118, 0.16);
+      --accent-2: #a7be8b;
+      --ok: #a7be8b;
+      --warn: #d7b46b;
+      --danger: #d89984;
+      --shadow: 0 20px 64px rgba(0, 0, 0, 0.24);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; min-height: 100%; }
+    body {
+      font-family: var(--body-font);
+      background:
+        radial-gradient(circle at top left, rgba(145, 102, 77, 0.08), transparent 30%),
+        radial-gradient(circle at top right, rgba(87, 101, 62, 0.09), transparent 28%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      transition: background-color 200ms ease, color 200ms ease;
+    }
+    a { color: inherit; text-decoration: none; }
+    button, input, textarea, select { font: inherit; }
+    .site-shell {
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .site-frame {
+      max-width: var(--content-width);
+      margin: 0 auto;
+      min-height: calc(100vh - 48px);
+      background: var(--bg-elevated);
+      border: 1px solid var(--line);
+      border-radius: 38px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      backdrop-filter: blur(16px);
+    }
+    .topbar {
+      min-height: var(--nav-height);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 24px 32px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+    }
+    .brand-mark {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+      padding: 10px;
+      flex: 0 0 auto;
+    }
+    .brand-copy {
+      display: grid;
+      gap: 4px;
+    }
+    .brand-kicker {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .brand-title {
+      font-family: var(--display-font);
+      font-size: 26px;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .brand-subtitle {
+      font-size: 15px;
+      line-height: 1.75;
+      color: var(--text-soft);
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .nav-link, .button, button {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--text);
+      min-height: 44px;
+      padding: 0 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: border-color 180ms ease, transform 180ms ease, background-color 180ms ease;
+      cursor: pointer;
+    }
+    .nav-link:hover, .button:hover, button:hover {
+      border-color: var(--line-strong);
+      background: var(--panel);
+      transform: translateY(-1px);
+    }
+    .nav-link.active {
+      background: var(--accent-soft);
+      border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+      color: var(--accent);
+    }
+    .button.primary, button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fffaf3;
+    }
+    .button.secondary, button.secondary {
+      background: var(--panel);
+    }
+    .button.warn, button.warn {
+      color: var(--warn);
+      border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+      background: color-mix(in srgb, var(--warn) 8%, transparent);
+    }
+    .button.success, button.success {
+      color: var(--ok);
+      border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+      background: color-mix(in srgb, var(--ok) 9%, transparent);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .theme-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--panel) 74%, transparent);
+    }
+    .theme-option {
+      min-height: 36px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-soft);
+      box-shadow: none;
+      transform: none;
+    }
+    .theme-option:hover {
+      background: color-mix(in srgb, var(--panel-strong) 88%, transparent);
+      color: var(--text);
+      border-color: transparent;
+      transform: none;
+    }
+    .theme-option.active,
+    .theme-option[aria-pressed="true"] {
+      background: var(--panel);
+      color: var(--accent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, var(--line));
+    }
+    .page {
+      padding: 28px 32px 36px;
+      display: grid;
+      gap: 30px;
+    }
+    .flash {
+      padding: 16px 20px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text-soft);
+    }
+    .flash.success { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); color: var(--ok); }
+    .flash.warning { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); color: var(--warn); }
+    .flash.error { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); color: var(--danger); }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      width: fit-content;
+    }
+    .hero {
+      display: grid;
+      gap: 18px;
+      padding: 28px;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--panel) 80%, transparent), color-mix(in srgb, var(--panel-strong) 92%, transparent)),
+        var(--panel);
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 2.15fr) minmax(280px, 0.9fr);
+      gap: 22px;
+      align-items: start;
+    }
+    .hero-copy {
+      display: grid;
+      gap: 14px;
+    }
+    .hero-title {
+      font-family: var(--display-font);
+      font-size: clamp(28px, 3.3vw, 40px);
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      margin: 0;
+      max-width: none;
+    }
+    .hero-title-tight {
+      white-space: nowrap;
+    }
+    .hero-lead {
+      font-size: 18px;
+      line-height: 1.9;
+      color: var(--text-soft);
+      max-width: 58ch;
+    }
+    .editorial-rule {
+      height: 1px;
+      background: linear-gradient(90deg, var(--line-strong), transparent);
+      max-width: 340px;
+    }
+    .summary-card {
+      padding: 20px 22px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: var(--panel);
+      display: grid;
+      gap: 12px;
+    }
+    .summary-label {
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .summary-value {
+      font-family: var(--display-font);
+      font-size: 34px;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      margin: 0;
+    }
+    .summary-detail {
+      color: var(--text-soft);
+      font-size: 15px;
+      line-height: 1.85;
+    }
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .section-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+      gap: 24px;
+    }
+    .panel {
+      padding: 24px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: var(--panel);
+      display: grid;
+      gap: 16px;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .panel-title {
+      font-family: var(--display-font);
+      font-size: 28px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      margin: 0;
+    }
+    .panel-copy {
+      color: var(--text-soft);
+      font-size: 16px;
+      line-height: 1.85;
+      max-width: 52ch;
+    }
+    .briefing-list {
+      display: grid;
+      gap: 12px;
+    }
+    .briefing-item {
+      display: grid;
+      gap: 8px;
+      padding: 16px 18px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 60%, transparent);
+    }
+    .briefing-item:hover {
+      border-color: var(--line-strong);
+      background: var(--panel-strong);
+    }
+    .briefing-date {
+      font-family: var(--display-font);
+      font-size: 26px;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .briefing-meta {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+    .status-list {
+      display: grid;
+      gap: 12px;
+    }
+    .status-item {
+      display: grid;
+      gap: 8px;
+      padding: 16px 18px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 55%, transparent);
+    }
+    .status-item strong {
+      font-size: 16px;
+    }
+    .status-detail {
+      color: var(--text-soft);
+      font-size: 16px;
+      line-height: 1.8;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--line);
+      color: var(--text-muted);
+      background: transparent;
+    }
+    .status-pill.ok {
+      color: var(--ok);
+      border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+      background: color-mix(in srgb, var(--ok) 9%, transparent);
+    }
+    .status-pill.bad {
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+      background: color-mix(in srgb, var(--danger) 9%, transparent);
+    }
+    .status-pill.warn {
+      color: var(--warn);
+      border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+      background: color-mix(in srgb, var(--warn) 9%, transparent);
+    }
+    .snapshot-list {
+      display: grid;
+      gap: 14px;
+    }
+    .snapshot-item {
+      display: grid;
+      gap: 6px;
+    }
+    .snapshot-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .snapshot-value {
+      color: var(--text-soft);
+      font-size: 15px;
+      line-height: 1.85;
+      overflow-wrap: anywhere;
+    }
+    .empty-state {
+      padding: 24px;
+      border-radius: var(--radius-md);
+      border: 1px dashed var(--line-strong);
+      color: var(--text-soft);
+      line-height: 1.9;
+      font-size: 15px;
+      background: color-mix(in srgb, var(--panel-strong) 65%, transparent);
+    }
+    .settings-grid {
+      display: grid;
+      gap: 18px;
+    }
+    .settings-card {
+      padding: 22px 24px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: var(--panel);
+      display: grid;
+      gap: 18px;
+    }
+    .settings-title {
+      font-family: var(--display-font);
+      font-size: 26px;
+      line-height: 1.1;
+      margin: 0;
+      letter-spacing: -0.03em;
+    }
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+    .field label {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    input, textarea, select {
+      width: 100%;
+      min-height: 46px;
+      padding: 0 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 84%, transparent);
+      color: var(--text);
+    }
+    textarea {
+      min-height: 220px;
+      padding: 14px;
+      resize: vertical;
+      line-height: 1.7;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+    }
+    .field-note {
+      color: var(--text-soft);
+      font-size: 15px;
+      line-height: 1.8;
+    }
+    .inline-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .settings-disclosure {
+      display: grid;
+      gap: 18px;
+    }
+    .settings-disclosure > summary {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      cursor: pointer;
+    }
+    .settings-disclosure > summary::-webkit-details-marker {
+      display: none;
+    }
+    .settings-disclosure-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--text-soft);
+      background: color-mix(in srgb, var(--panel-strong) 78%, transparent);
+      white-space: nowrap;
+    }
+    .settings-disclosure-toggle::before {
+      content: attr(data-closed-label);
+    }
+    .settings-disclosure[open] .settings-disclosure-toggle::before {
+      content: attr(data-open-label);
+    }
+    .paper {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      padding: 30px;
+      box-shadow: var(--shadow);
+    }
+    .paper-meta {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 22px;
+      color: var(--text-soft);
+    }
+    .paper h1 {
+      font-family: var(--display-font);
+      font-size: clamp(36px, 4vw, 56px);
+      line-height: 1;
+      letter-spacing: -0.04em;
+      margin: 0;
+    }
+    .paper pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--body-font);
+      font-size: 15px;
+      line-height: 1.95;
+      color: var(--text);
+    }
+    .footer-note {
+      padding-top: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .about-dialog {
+      width: min(780px, calc(100vw - 32px));
+      max-width: none;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+    }
+    .about-dialog::backdrop {
+      background: rgba(24, 18, 12, 0.48);
+      backdrop-filter: blur(8px);
+    }
+    .about-dialog-card {
+      display: grid;
+      gap: 20px;
+      max-height: min(860px, calc(100vh - 40px));
+      overflow-y: auto;
+      padding: 26px;
+      border-radius: 30px;
+      border: 1px solid var(--line);
+      background:
+        radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
+        radial-gradient(circle at top left, color-mix(in srgb, var(--accent-2) 10%, transparent), transparent 38%),
+        var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .about-dialog-hero {
+      display: grid;
+      gap: 18px;
+      padding: 18px 18px 0;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel-strong) 86%, transparent);
+    }
+    .about-dialog-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+    }
+    .about-dialog-brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .about-dialog-brand img {
+      width: 62px;
+      height: 62px;
+      padding: 10px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+    }
+    .about-dialog-brand-copy {
+      display: grid;
+      gap: 10px;
+    }
+    .about-dialog-title-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .about-dialog-title {
+      font-family: var(--display-font);
+      font-size: 30px;
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      margin: 0;
+    }
+    .about-dialog-version-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .about-dialog-subtitle {
+      color: var(--text-soft);
+      font-size: 16px;
+      line-height: 1.8;
+      max-width: 560px;
+    }
+    .about-dialog-sections {
+      display: grid;
+      gap: 16px;
+    }
+    .about-dialog-section {
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 88%, transparent);
+    }
+    .about-dialog-section-title {
+      font-family: var(--display-font);
+      font-size: 20px;
+      line-height: 1.2;
+      margin: 0;
+    }
+    .about-dialog-section-copy {
+      margin: 0;
+      color: var(--text-soft);
+      font-size: 15px;
+      line-height: 1.85;
+    }
+    .about-dialog-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .about-dialog-author-name {
+      font-family: var(--display-font);
+      font-size: 24px;
+      line-height: 1.1;
+    }
+    .about-dialog-author-lines {
+      display: grid;
+      gap: 6px;
+      color: var(--text-soft);
+      font-size: 15px;
+      line-height: 1.8;
+    }
+    .about-dialog-footer {
+      display: grid;
+      gap: 4px;
+      padding-top: 4px;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.7;
+      text-align: center;
+      justify-items: center;
+    }
+    @media (max-width: 980px) {
+      .hero-grid, .section-grid, .field-grid {
+        grid-template-columns: 1fr;
+      }
+      .hero-title-tight {
+        white-space: normal;
+      }
+    }
+    @media (max-width: 720px) {
+      .site-shell { padding: 12px; }
+      .site-frame { min-height: calc(100vh - 24px); border-radius: 28px; }
+      .topbar, .page { padding-left: 18px; padding-right: 18px; }
+      .topbar { align-items: start; flex-direction: column; }
+      .brand-mark { width: 48px; height: 48px; }
+      .hero, .panel, .settings-card, .paper { padding: 20px; }
+      .about-dialog-card { padding: 20px; }
+      .about-dialog-head { flex-direction: column; align-items: flex-start; }
+      .hero-title { max-width: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  {% set resolved_about_modal = about_modal if about_modal is defined else {
+    'button_label': '关于',
+    'dialog_id': 'about-dialog',
+    'tagline': '把公众号阅读整理成本地日报的阅读工作台',
+    'motivation_title': '开发动机',
+    'motivation_text': 'GZHReader 想把每天零散掠过的公众号阅读，整理成一份可以安静回看的本地日报。',
+    'feedback_title': '反馈',
+    'feedback_text': '这里先保留 About 弹窗入口，后续可以继续补充反馈方式、支持入口和更多作者信息。',
+    'feedback_url': '',
+    'feedback_label': '',
+    'support_title': '支持项目',
+    'support_text': '如果这个工作台帮你省下了每天整理公众号阅读的时间，它就已经完成了最重要的价值。',
+    'support_url': '',
+    'support_label': '',
+    'author_title': '关于作者',
+    'author_name': 'GZHReader 作者',
+    'author_lines': [
+      '专注把公众号阅读、摘要与归档做成更安静的一体化体验',
+      '这个 about 弹窗现在先作为入口，后续内容可以继续调整',
+    ],
+    'author_url': '',
+    'author_label': '',
+    'footer_lines': [
+      '本地优先 · 每日简报 · 公众号阅读工作台',
+      '为每一次可回看的阅读流保留一个更稳的桌面入口',
+    ],
+  } %}
+  {% set resolved_theme_state = theme_state if theme_state is defined else {
+    'default': 'system',
+    'options': [
+      {'value': 'system', 'label': '跟随系统'},
+      {'value': 'light', 'label': '浅色'},
+      {'value': 'dark', 'label': '深色'},
+    ],
+  } %}
+  <div class="site-shell">
+    <div class="site-frame">
+      <header class="topbar">
+        <div class="brand">
+          <img class="brand-mark" src="/static/brand/gzhreader-icon.svg" alt="GZHReader">
+          <div class="brand-copy">
+            <div class="brand-kicker">Reading Workspace</div>
+            <div class="brand-title">GZHReader</div>
+            <div class="brand-subtitle">把公众号阅读流整理成每天可回看的本地日报</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">工作台</a>
+          <a class="nav-link {% if request.url.path == '/settings' %}active{% endif %}" href="/settings">设置</a>
+          <a class="nav-link" href="/briefings/latest">最新日报</a>
+          <button class="nav-link" type="button" data-open-dialog="{{ resolved_about_modal.dialog_id }}">{{ resolved_about_modal.button_label }}</button>
+          <div class="theme-switch" role="group" aria-label="主题">
+            {% for option in resolved_theme_state.options %}
+              <button
+                class="theme-option"
+                type="button"
+                data-theme-option="{{ option.value }}"
+                aria-pressed="{{ 'true' if option.value == resolved_theme_state.default else 'false' }}"
+              >{{ option.label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+      </header>
+      <main class="page">
+        {% if message %}
+          <div class="flash {{ level }}">{{ message }}</div>
+        {% endif %}
+        {% block content %}{% endblock %}
+        <div class="footer-note">GZHReader v{{ app_version }} · bundled local RSS service · local-first workspace</div>
+      </main>
+      <dialog id="{{ resolved_about_modal.dialog_id }}" class="about-dialog">
+        <div class="about-dialog-card">
+          <div class="about-dialog-hero">
+            <div class="about-dialog-head">
+              <div class="about-dialog-brand">
+                <img src="/static/brand/gzhreader-icon.svg" alt="GZHReader">
+                <div class="about-dialog-brand-copy">
+                  <div class="about-dialog-title-row">
+                    <div class="about-dialog-title">GZHReader</div>
+                    <span class="about-dialog-version-badge">v{{ app_version }}</span>
+                  </div>
+                  <div class="about-dialog-subtitle">{{ resolved_about_modal.tagline }}</div>
+                </div>
+              </div>
+              <form method="dialog">
+                <button class="button secondary" type="submit">关闭</button>
+              </form>
+            </div>
+          </div>
+          <div class="about-dialog-sections">
+            <section class="about-dialog-section">
+              <h2 class="about-dialog-section-title">{{ resolved_about_modal.motivation_title }}</h2>
+              <p class="about-dialog-section-copy">{{ resolved_about_modal.motivation_text }}</p>
+            </section>
+            <section class="about-dialog-section">
+              <h2 class="about-dialog-section-title">{{ resolved_about_modal.feedback_title }}</h2>
+              <p class="about-dialog-section-copy">{{ resolved_about_modal.feedback_text }}</p>
+              {% if resolved_about_modal.feedback_url and resolved_about_modal.feedback_label %}
+                <div class="about-dialog-actions">
+                  <a class="button secondary" href="{{ resolved_about_modal.feedback_url }}" target="_blank" rel="noreferrer">{{ resolved_about_modal.feedback_label }}</a>
+                </div>
+              {% endif %}
+            </section>
+            <section class="about-dialog-section">
+              <h2 class="about-dialog-section-title">{{ resolved_about_modal.support_title }}</h2>
+              <p class="about-dialog-section-copy">{{ resolved_about_modal.support_text }}</p>
+              {% if resolved_about_modal.support_url and resolved_about_modal.support_label %}
+                <div class="about-dialog-actions">
+                  <a class="button secondary" href="{{ resolved_about_modal.support_url }}" target="_blank" rel="noreferrer">{{ resolved_about_modal.support_label }}</a>
+                </div>
+              {% endif %}
+            </section>
+            <section class="about-dialog-section">
+              <h2 class="about-dialog-section-title">{{ resolved_about_modal.author_title }}</h2>
+              <div class="about-dialog-author-name">{{ resolved_about_modal.author_name }}</div>
+              <div class="about-dialog-author-lines">
+                {% for line in resolved_about_modal.author_lines %}
+                  <div>{{ line }}</div>
+                {% endfor %}
+              </div>
+              {% if resolved_about_modal.author_url and resolved_about_modal.author_label %}
+                <div class="about-dialog-actions">
+                  <a class="button secondary" href="{{ resolved_about_modal.author_url }}" target="_blank" rel="noreferrer">{{ resolved_about_modal.author_label }}</a>
+                </div>
+              {% endif %}
+            </section>
+          </div>
+          <div class="about-dialog-footer">
+            {% for line in resolved_about_modal.footer_lines %}
+              <div>{{ line }}</div>
+            {% endfor %}
+          </div>
+        </div>
+      </dialog>
+    </div>
+  </div>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const storageKey = 'gzhreader.theme';
+      const defaultTheme = '{{ resolved_theme_state.default }}';
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+      const resolveTheme = (theme) => {
+        if (theme === 'system') {
+          return mediaQuery.matches ? 'dark' : 'light';
+        }
+        return theme;
+      };
+
+      const applyTheme = (preference) => {
+        root.dataset.theme = resolveTheme(preference);
+        root.dataset.themePreference = preference;
+        document.querySelectorAll('[data-theme-option]').forEach((button) => {
+          const active = button.dataset.themeOption === preference;
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+          button.classList.toggle('active', active);
+        });
+      };
+
+      const saved = localStorage.getItem(storageKey) || defaultTheme;
+      applyTheme(saved);
+
+      document.querySelectorAll('[data-theme-option]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const next = button.dataset.themeOption || defaultTheme;
+          localStorage.setItem(storageKey, next);
+          applyTheme(next);
+        });
+      });
+
+      const handleSystemChange = () => {
+        const current = localStorage.getItem(storageKey) || defaultTheme;
+        if (current === 'system') {
+          applyTheme('system');
+        }
+      };
+
+      if (typeof mediaQuery.addEventListener === 'function') {
+        mediaQuery.addEventListener('change', handleSystemChange);
+      } else if (typeof mediaQuery.addListener === 'function') {
+        mediaQuery.addListener(handleSystemChange);
+      }
+
+      document.querySelectorAll('[data-open-dialog]').forEach((trigger) => {
+        trigger.addEventListener('click', () => {
+          const dialogId = trigger.getAttribute('data-open-dialog') || '';
+          const dialog = dialogId ? document.getElementById(dialogId) : null;
+          if (!dialog || dialog.tagName !== 'DIALOG') return;
+          if (typeof dialog.showModal === 'function') {
+            dialog.showModal();
+          } else {
+            dialog.setAttribute('open', 'open');
+          }
+        });
+      });
+
+      document.querySelectorAll('dialog').forEach((dialog) => {
+        dialog.addEventListener('click', (event) => {
+          if (event.target !== dialog) return;
+          if (typeof dialog.close === 'function') {
+            dialog.close();
+          } else {
+            dialog.removeAttribute('open');
+          }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

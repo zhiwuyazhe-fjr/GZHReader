@@ -1,0 +1,53 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl"]
+}
+
+model Account {
+  id                      String    @id @db.VarChar(255)
+  token                   String    @map("token") @db.VarChar(2048)
+  name                    String    @map("name") @db.VarChar(1024)
+  status                  Int       @default(1) @map("status") @db.Int()
+  consecutiveAuthFailures Int       @default(0) @map("consecutive_auth_failures") @db.Int()
+  dailyRequestCount       Int       @default(0) @map("daily_request_count") @db.Int()
+  dailyRequestDate        String?   @map("daily_request_date") @db.VarChar(32)
+  cooldownUntil           Int?      @map("cooldown_until") @db.Int()
+  lastError               String?   @map("last_error") @db.VarChar(2048)
+  lastSuccessAt           DateTime? @map("last_success_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime? @default(now()) @updatedAt @map("updated_at")
+
+  @@map("accounts")
+}
+
+model Feed {
+  id         String    @id @db.VarChar(255)
+  mpName     String    @map("mp_name") @db.VarChar(512)
+  mpCover    String    @map("mp_cover") @db.VarChar(1024)
+  mpIntro    String    @map("mp_intro") @db.Text()
+  status     Int       @default(1) @map("status") @db.Int()
+  syncTime   Int       @default(0) @map("sync_time")
+  updateTime Int       @map("update_time")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime? @default(now()) @updatedAt @map("updated_at")
+  hasHistory Int?      @default(1) @map("has_history")
+
+  @@map("feeds")
+}
+
+model Article {
+  id          String    @id @db.VarChar(255)
+  mpId        String    @map("mp_id") @db.VarChar(255)
+  title       String    @map("title") @db.VarChar(255)
+  picUrl      String    @map("pic_url") @db.VarChar(255)
+  publishTime Int       @map("publish_time")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at")
+
+  @@map("articles")
+}

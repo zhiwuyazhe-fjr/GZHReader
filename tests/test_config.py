@@ -20,7 +20,7 @@ output:
     cfg = load_config(config_path)
 
     assert cfg.source.mode == "aggregate"
-    assert cfg.source.url == "http://localhost:4000/feeds/all.atom"
+    assert cfg.source.url == "http://127.0.0.1:4000/feeds/all.atom"
     assert cfg.output.raw_archive_dir == "./output/html"
     assert cfg.output.save_raw_html is False
     assert cfg.article_fetch.enabled is True
@@ -95,9 +95,54 @@ def test_save_and_reload_roundtrip(tmp_path) -> None:
     save_config(cfg, path)
     loaded = load_config(path)
     assert loaded.model_dump() == cfg.model_dump()
-    assert loaded.wewe_rss.compose_variant == "mysql"
+    assert loaded.rss_service.mode == "bundled_wewe_rss"
+    assert loaded.rss_service.auth_code == ""
+    assert loaded.rss_service.port == 4000
     assert loaded.output.save_raw_html is False
     assert loaded.rss.daily_article_limit == 20
+
+
+def test_bundled_rss_service_clears_legacy_auth_code() -> None:
+    cfg = AppConfig.model_validate(
+        {
+            "source": {"mode": "aggregate", "url": "http://127.0.0.1:4000/feeds/all.atom"},
+            "rss_service": {
+                "mode": "bundled_wewe_rss",
+                "base_url": "http://127.0.0.1:4000",
+                "auth_code": "123567",
+                "port": 4000,
+                "host": "127.0.0.1",
+                "data_dir": "./.runtime/wewe-rss/data",
+                "log_file": "./logs/wewe-rss.log",
+            },
+        }
+    )
+
+    assert cfg.rss_service.auth_code == ""
+
+
+def test_bundled_rss_service_rewrites_localhost_base_url(tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+source:
+  mode: aggregate
+  url: http://localhost:4100/feeds/all.atom
+rss_service:
+  mode: bundled_wewe_rss
+  base_url: http://localhost:4100
+  auth_code: ''
+  port: 4100
+  host: 127.0.0.1
+  data_dir: ./.runtime/wewe-rss/data
+  log_file: ./logs/wewe-rss.log
+""".strip(),
+        encoding="utf-8",
+    )
+
+    cfg = ensure_config(config_path)
+
+    assert cfg.rss_service.base_url == "http://127.0.0.1:4100"
 
 
 def test_default_user_agent_follows_package_version() -> None:
