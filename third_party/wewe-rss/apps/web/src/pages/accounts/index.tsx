@@ -290,7 +290,7 @@ const AccountPage = () => {
                     />
                     <button
                       type="button"
-                      className="rss-button is-soft-danger"
+                      className="rss-button is-soft-danger is-rect"
                       onClick={() => {
                         if (!window.confirm(`确认移除账号 ${item.name} 吗`)) {
                           return;

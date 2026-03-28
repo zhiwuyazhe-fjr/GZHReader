@@ -4,6 +4,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,7 +14,16 @@ import httpx
 
 from .config import RSSServiceConfig
 from .platform_utils import hidden_process_kwargs, open_web_url
-from .runtime_paths import RuntimePaths, ensure_runtime_dirs, get_runtime_paths, is_frozen_app
+from .runtime_paths import (
+    RuntimePaths,
+    ensure_runtime_dirs,
+    get_console_executable_path,
+    get_runtime_paths,
+    is_frozen_app,
+)
+
+LOCAL_ACCOUNT_TOKEN_PREFIX = "gzh_local_"
+RECONNECT_MESSAGE = "删除账号后，重新扫码添加"
 
 
 @dataclass(slots=True)
@@ -52,6 +62,10 @@ class BundledRSSServiceManager:
     def feed_url(self) -> str:
         return f"{self.config.base_url.rstrip('/')}/feeds/all.atom"
 
+    @property
+    def bridge_url(self) -> str:
+        return f"http://127.0.0.1:{self.config.bridge_port}"
+
     def status_snapshot(self) -> RSSServiceRuntimeStatus:
         runtime_ok, runtime_detail = self.check_runtime()
         process_ok, process_detail = self.check_process()
@@ -70,7 +84,7 @@ class BundledRSSServiceManager:
     def check_runtime(self) -> tuple[bool, str]:
         runtime_root = self._resolve_runtime_root()
         if runtime_root is None:
-            return False, "未找到已构建的 bundled wewe-rss 运行时，请先运行 scripts/build_wewe_rss.ps1。"
+            return False, "未找到 bundled wewe-rss 运行时，请先执行 scripts/build_wewe_rss.ps1"
 
         entrypoint = runtime_root / "apps" / "server" / "dist" / "main.js"
         client_index = runtime_root / "apps" / "server" / "client" / "index.hbs"
@@ -81,7 +95,7 @@ class BundledRSSServiceManager:
 
         node_exe = self._find_node_executable(runtime_root)
         if node_exe is None:
-            return False, "未找到 bundled node.exe，也没有检测到系统 Node.js。"
+            return False, "未找到 bundled node.exe，也没有检测到系统 Node.js"
 
         return True, f"运行时已就绪：{runtime_root}"
 
@@ -91,10 +105,10 @@ class BundledRSSServiceManager:
             return True, f"本地公众号服务正在运行（pid={pid}）"
         if pid is not None and not self._pid_exists(pid):
             self._remove_pid_file()
-            return False, "检测到过期 pid 文件，已自动清理。"
+            return False, "检测到过期 pid 文件，已自动清理"
         if self._check_http_ok():
-            return True, "本地公众号服务已经响应，但没有记录 pid。"
-        return False, "本地公众号服务尚未启动。"
+            return True, "本地公众号服务已经响应，但没有记录 pid"
+        return False, "本地公众号服务尚未启动"
 
     def check_service(self) -> tuple[bool, str]:
         try:
@@ -109,23 +123,27 @@ class BundledRSSServiceManager:
             raise RuntimeError(runtime_detail)
 
         if self._check_http_ok():
-            return "本地公众号服务已经在运行。"
+            return "本地公众号服务已经在运行"
 
         runtime_root = self._resolve_runtime_root()
         if runtime_root is None:
-            raise RuntimeError("未找到已构建的 bundled wewe-rss 运行时。")
+            raise RuntimeError("未找到 bundled wewe-rss 运行时")
 
         node_exe = self._find_node_executable(runtime_root)
         if node_exe is None:
-            raise RuntimeError("未找到可用的 Node.js 运行时。")
+            raise RuntimeError("未找到可用的 Node.js 运行时")
+
+        db_path = Path(self.config.data_dir).expanduser().resolve() / "wewe-rss.db"
+        self._start_bridge()
+        self._apply_sqlite_migrations(runtime_root, db_path)
+        self._mark_legacy_accounts_for_reconnect(db_path)
 
         entrypoint = runtime_root / "apps" / "server" / "dist" / "main.js"
         log_file = Path(self.config.log_file).expanduser().resolve()
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         env = os.environ.copy()
-        env.update(self._build_runtime_env())
-        self._apply_sqlite_migrations(runtime_root, Path(self.config.data_dir).expanduser().resolve() / "wewe-rss.db")
+        env.update(self._build_runtime_env(db_path))
 
         with log_file.open("a", encoding="utf-8") as stream:
             process = subprocess.Popen(
@@ -140,6 +158,7 @@ class BundledRSSServiceManager:
 
         self._write_pid(process.pid)
         if not self._wait_until_ready(timeout_seconds=15.0):
+            self._stop_bridge()
             if process.poll() is not None:
                 raise RuntimeError(f"服务启动失败，退出码={process.returncode}。请查看日志：{log_file}")
             raise RuntimeError(f"服务启动超时。请查看日志：{log_file}")
@@ -149,26 +168,15 @@ class BundledRSSServiceManager:
     def stop(self) -> str:
         pid = self._read_pid()
         if pid is None:
+            self._stop_bridge()
             if self._check_http_ok():
-                return "服务正在响应，但没有本地 pid 文件，因此没有执行停止。"
-            return "本地公众号服务当前未运行。"
+                return "服务正在响应，但没有本地 pid 文件，因此没有执行停止"
+            return "本地公众号服务当前未运行"
 
-        if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/PID", str(pid), "/T", "/F"],
-                capture_output=True,
-                text=True,
-                check=False,
-                **hidden_process_kwargs(),
-            )
-        else:
-            try:
-                os.kill(pid, 15)
-            except OSError:
-                pass
-
+        self._kill_pid(pid)
         self._remove_pid_file()
-        return "本地公众号服务已停止。"
+        self._stop_bridge()
+        return "本地公众号服务已停止"
 
     def restart(self) -> str:
         self.stop()
@@ -177,10 +185,10 @@ class BundledRSSServiceManager:
     def logs(self, tail: int = 120) -> str:
         log_file = Path(self.config.log_file).expanduser().resolve()
         if not log_file.exists():
-            return "暂无服务日志。"
+            return "暂无服务日志"
         lines = log_file.read_text(encoding="utf-8", errors="ignore").splitlines()
         snippet = lines[-tail:]
-        return "\n".join(snippet) if snippet else "暂无服务日志。"
+        return "\n".join(snippet) if snippet else "暂无服务日志"
 
     def open_admin(self, *, return_to: str = "") -> str:
         target_url = self.admin_url
@@ -225,8 +233,7 @@ class BundledRSSServiceManager:
             detail=str(payload.get("detail") or ""),
         )
 
-    def _build_runtime_env(self) -> dict[str, str]:
-        db_path = Path(self.config.data_dir).expanduser().resolve() / "wewe-rss.db"
+    def _build_runtime_env(self, db_path: Path) -> dict[str, str]:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         return {
             "NODE_ENV": "production",
@@ -236,6 +243,7 @@ class BundledRSSServiceManager:
             "DATABASE_URL": f"file:{db_path.as_posix()}",
             "AUTH_CODE": "",
             "SERVER_ORIGIN_URL": self.config.base_url,
+            "PLATFORM_URL": self.bridge_url,
         }
 
     def _resolve_runtime_root(self) -> Path | None:
@@ -299,6 +307,29 @@ class BundledRSSServiceManager:
                 )
             connection.commit()
 
+    def _mark_legacy_accounts_for_reconnect(self, db_path: Path) -> None:
+        if not db_path.exists():
+            return
+        with sqlite3.connect(db_path) as connection:
+            connection.execute(
+                """
+                UPDATE accounts
+                SET status = 0,
+                    consecutive_auth_failures = CASE
+                        WHEN consecutive_auth_failures < 3 THEN 3
+                        ELSE consecutive_auth_failures
+                    END,
+                    cooldown_until = NULL,
+                    last_error = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE token IS NOT NULL
+                  AND token != ''
+                  AND token NOT LIKE ?
+                """,
+                (RECONNECT_MESSAGE, f"{LOCAL_ACCOUNT_TOKEN_PREFIX}%"),
+            )
+            connection.commit()
+
     def _resolve_sqlite_migrations_root(self, runtime_root: Path) -> Path:
         return runtime_root / "apps" / "server" / "prisma" / "migrations"
 
@@ -316,6 +347,80 @@ class BundledRSSServiceManager:
         except Exception:
             return False
         return response.status_code < 500
+
+    def _check_bridge_ok(self) -> bool:
+        try:
+            response = httpx.get(f"{self.bridge_url}/healthz", timeout=1.5)
+        except Exception:
+            return False
+        return response.status_code == 200
+
+    def _start_bridge(self) -> None:
+        if self._check_bridge_ok():
+            return
+
+        pid = self._read_bridge_pid()
+        if pid is not None and not self._pid_exists(pid):
+            self._remove_bridge_pid_file()
+
+        log_file = self._bridge_log_path()
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with log_file.open("a", encoding="utf-8") as stream:
+            process = subprocess.Popen(
+                self._build_bridge_command(),
+                cwd=self.runtime_paths.state_dir,
+                stdin=subprocess.DEVNULL,
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                **hidden_process_kwargs(),
+            )
+
+        self._write_bridge_pid(process.pid)
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline:
+            if self._check_bridge_ok():
+                return
+            if process.poll() is not None:
+                raise RuntimeError(
+                    f"本地会话桥启动失败，退出码={process.returncode}。请查看日志：{log_file}"
+                )
+            time.sleep(0.4)
+
+        raise RuntimeError(f"本地会话桥启动超时。请查看日志：{log_file}")
+
+    def _stop_bridge(self) -> None:
+        pid = self._read_bridge_pid()
+        if pid is None:
+            return
+        self._kill_pid(pid)
+        self._remove_bridge_pid_file()
+
+    def _build_bridge_command(self) -> list[str]:
+        args = [
+            "bridge-serve",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(self.config.bridge_port),
+            "--remote-url",
+            self.config.remote_platform_url,
+            "--session-store",
+            str(self._session_store_path()),
+        ]
+        if is_frozen_app():
+            executable = get_console_executable_path() or Path(sys.executable).resolve()
+            return [str(executable), *args]
+        return [str(Path(sys.executable).resolve()), "-m", "gzhreader", *args]
+
+    def _session_store_path(self) -> Path:
+        return self.runtime_paths.rss_service_dir / "weread-sessions.json"
+
+    def _bridge_log_path(self) -> Path:
+        return self.runtime_paths.logs_dir / "weread-bridge.log"
+
+    def _bridge_pid_path(self) -> Path:
+        return self.runtime_paths.rss_service_dir / "weread-bridge.pid"
 
     def _write_pid(self, pid: int) -> None:
         self.runtime_paths.rss_service_pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -335,6 +440,41 @@ class BundledRSSServiceManager:
         try:
             self.runtime_paths.rss_service_pid_file.unlink()
         except FileNotFoundError:
+            pass
+
+    def _write_bridge_pid(self, pid: int) -> None:
+        self._bridge_pid_path().parent.mkdir(parents=True, exist_ok=True)
+        self._bridge_pid_path().write_text(str(pid), encoding="utf-8")
+
+    def _read_bridge_pid(self) -> int | None:
+        pid_file = self._bridge_pid_path()
+        if not pid_file.exists():
+            return None
+        raw = pid_file.read_text(encoding="utf-8").strip()
+        if not raw.isdigit():
+            self._remove_bridge_pid_file()
+            return None
+        return int(raw)
+
+    def _remove_bridge_pid_file(self) -> None:
+        try:
+            self._bridge_pid_path().unlink()
+        except FileNotFoundError:
+            pass
+
+    def _kill_pid(self, pid: int) -> None:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                check=False,
+                **hidden_process_kwargs(),
+            )
+            return
+        try:
+            os.kill(pid, 15)
+        except OSError:
             pass
 
     def _pid_exists(self, pid: int) -> bool:

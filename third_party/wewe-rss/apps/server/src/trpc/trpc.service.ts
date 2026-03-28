@@ -51,6 +51,7 @@ type RefreshResultPayload = {
 };
 
 const accountProbeFreshnessWindowMs = 2 * 60 * 60 * 1000;
+const reconnectMessage = '删除账号后，重新扫码添加';
 
 @Injectable()
 export class TrpcService {
@@ -160,8 +161,8 @@ export class TrpcService {
       }
       return this.createRefreshFailure(
         'relogin_required',
-        '当前账号需要重新登录',
-        '请先去账号页重新扫码，再回来刷新',
+        reconnectMessage,
+        reconnectMessage,
       );
     }
 
@@ -202,7 +203,7 @@ export class TrpcService {
         healthStatus: 'needs_reauth',
         healthLabel: '待重登',
         healthTone: 'danger',
-        healthDetail: account.lastError || '这个账号已经过期，需要重新扫码登录',
+        healthDetail: account.lastError || reconnectMessage,
       };
     }
     if (account.status === statusMap.DISABLE) {
@@ -260,7 +261,7 @@ export class TrpcService {
         consecutiveAuthFailures: authFailureLimit,
         cooldownUntil: null,
         status: statusMap.INVALID,
-        lastError: '这个账号已经过期，需要重新扫码登录',
+        lastError: reconnectMessage,
       },
     });
   }
@@ -440,7 +441,7 @@ export class TrpcService {
           cooldownUntil: now + authCooldownSeconds,
           status: shouldInvalidate ? statusMap.INVALID : statusMap.ENABLE,
           lastError: shouldInvalidate
-            ? '这个账号已经过期，需要重新扫码登录'
+            ? reconnectMessage
             : '登录状态不稳定，系统让它先休息一会',
         },
       });

@@ -24,6 +24,7 @@ from .storage import Storage
 from .summarizer import OpenAICompatibleSummarizer
 from .types import DoctorCheck
 from .webapp import DashboardBackend, create_app as create_web_app
+from .weread_bridge import run_bridge_server
 
 app = typer.Typer(help="GZHReader desktop workspace")
 run_app = typer.Typer(help="Run briefing generation")
@@ -142,6 +143,21 @@ def service_logs(config: Path | None = typer.Option(None, "--config", help="Conf
 def service_open_admin(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
     config_data = ensure_config(_resolve_cli_config_path(config))
     typer.echo(BundledRSSServiceManager(config_data.rss_service).open_admin())
+
+
+@app.command("bridge-serve", hidden=True)
+def bridge_serve(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(18765, "--port"),
+    remote_url: str = typer.Option("https://weread.111965.xyz", "--remote-url"),
+    session_store: Path = typer.Option(..., "--session-store"),
+) -> None:
+    run_bridge_server(
+        host=host,
+        port=port,
+        remote_platform_url=remote_url,
+        session_store_path=session_store.expanduser().resolve(),
+    )
 
 
 def run_gui_server(

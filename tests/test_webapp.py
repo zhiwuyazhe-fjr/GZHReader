@@ -8,6 +8,7 @@ from gzhreader.webapp import (
     LLM_API_KEY_PLACEHOLDER,
     BriefingFile,
     DashboardBackend,
+    _build_about_modal,
     _build_llm_status,
     _build_redacted_yaml,
     create_app,
@@ -109,14 +110,14 @@ class FakeBackend:
                 "dialog_id": "about-dialog",
                 "tagline": "把公众号阅读整理成更安静的本地工作台",
                 "motivation_title": "💡 开发动机",
-                "motivation_text": "从公众号碎片化的推送中解放出来，比起被小红点牵着走，更希望把优质内容安静地收进本地、沉淀为日报，留给真正需要深度阅读的时刻",
+                "motivation_text": "从公众号碎片化的推送中解放出来，比起被小红点牵着走，更希望把优质内容安静地收进本地、沉淀为日报，留给真正需要深度阅读的时刻😍",
                 "repo_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
                 "feedback_title": "💬 问题反馈",
-                "feedback_text": "遇到账号配置、内容抓取、日报生成或交互体验上的问题，欢迎随时提 Issue！特别是那些让你觉得“多点了一步”、“等得太久”或“提示看不懂”的细节，都是接下来的优化方向",
+                "feedback_text": "遇到账号配置、内容抓取、日报生成或交互体验上的问题，欢迎随时提 Issue！特别是那些让你觉得“多点了一步”、“等得太久”或“提示看不懂”的细节，都是接下来的优化方向！",
                 "issues_url": "https://github.com/zhiwuyazhe-fjr/GZHReader/issues",
                 "feedback_label": "反馈问题",
                 "support_title": "❤️ 支持项目",
-                "support_text": "如果 GZHReader 帮你减少了信息噪音，让阅读整理更省心，请把它分享给有同样困扰的朋友。你的每一次安利，都是我持续把这个工具做稳、做精的最大底气😘",
+                "support_text": "如果 GZHReader 帮你减少了信息噪音，让阅读整理更省心，请把它分享给有同样困扰的朋友。每一次安利，都是我持续优化的动力😘",
                 "share_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
                 "support_label": "分享给朋友",
                 "author_title": "关于作者",
@@ -494,3 +495,27 @@ def test_homepage_renders_about_trigger_and_dialog() -> None:
     assert "v2.0.0" in response.text
     assert "vv2.0.0" not in response.text
     assert 'data-open-admin-form' in response.text
+
+
+def test_about_modal_copy_matches_exact_requested_text() -> None:
+    about = _build_about_modal()
+
+    assert about["motivation_title"] == "💡 开发动机"
+    assert about["motivation_text"] == "从公众号碎片化的推送中解放出来，比起被小红点牵着走，更希望把优质内容安静地收进本地、沉淀为日报，留给真正需要深度阅读的时刻😍"
+    assert about["feedback_title"] == "💬 问题反馈"
+    assert about["feedback_text"] == "遇到账号配置、内容抓取、日报生成或交互体验上的问题，欢迎随时提 Issue！特别是那些让你觉得“多点了一步”、“等得太久”或“提示看不懂”的细节，都是接下来的优化方向！"
+    assert about["support_title"] == "❤️ 支持项目"
+    assert about["support_text"] == "如果 GZHReader 帮你减少了信息噪音，让阅读整理更省心，请把它分享给有同样困扰的朋友。每一次安利，都是我持续优化的动力😘"
+
+
+def test_layout_template_keeps_exact_about_fallback_copy_and_rectangular_button() -> None:
+    template = Path("src/gzhreader/templates/layout.html").read_text(encoding="utf-8")
+
+    assert "💡 开发动机" in template
+    assert "从公众号碎片化的推送中解放出来，比起被小红点牵着走，更希望把优质内容安静地收进本地、沉淀为日报，留给真正需要深度阅读的时刻😍" in template
+    assert "💬 问题反馈" in template
+    assert "遇到账号配置、内容抓取、日报生成或交互体验上的问题，欢迎随时提 Issue！特别是那些让你觉得“多点了一步”、“等得太久”或“提示看不懂”的细节，都是接下来的优化方向！" in template
+    assert "❤️ 支持项目" in template
+    assert "如果 GZHReader 帮你减少了信息噪音，让阅读整理更省心，请把它分享给有同样困扰的朋友。每一次安利，都是我持续优化的动力😘" in template
+    assert '<span class="about-action-label">开源仓库</span>' in template
+    assert ".about-action-button" in template

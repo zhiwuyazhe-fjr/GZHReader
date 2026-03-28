@@ -134,6 +134,8 @@ class RSSServiceConfig(StrictBaseModel):
     auth_code: str = ""
     port: int = 4000
     host: str = "127.0.0.1"
+    bridge_port: int = 18765
+    remote_platform_url: str = "https://weread.111965.xyz"
     data_dir: str = "./.runtime/wewe-rss/data"
     log_file: str = "./logs/wewe-rss.log"
 
@@ -149,11 +151,15 @@ class RSSServiceConfig(StrictBaseModel):
     def _validate_model(self) -> "RSSServiceConfig":
         if self.port <= 0:
             raise ValueError("port must be positive")
+        if self.bridge_port <= 0:
+            raise ValueError("bridge_port must be positive")
         self.auth_code = ""
         if not self.base_url.strip():
             self.base_url = f"http://{self.host}:{self.port}"
         elif self.base_url.strip().lower().startswith("http://localhost:"):
             self.base_url = f"http://127.0.0.1:{self.port}"
+        if not self.remote_platform_url.strip():
+            raise ValueError("remote_platform_url must not be empty")
         if not self.data_dir.strip():
             raise ValueError("data_dir must not be empty")
         if not self.log_file.strip():
@@ -261,6 +267,8 @@ class AppConfig(StrictBaseModel):
                 "auth_code": "",
                 "port": int(port),
                 "host": "127.0.0.1",
+                "bridge_port": 18765,
+                "remote_platform_url": "https://weread.111965.xyz",
                 "data_dir": (str(Path(legacy_service_dir) / "data") if legacy_service_dir else "./.runtime/wewe-rss/data"),
                 "log_file": "./logs/wewe-rss.log",
             }
@@ -318,6 +326,8 @@ def default_config() -> AppConfig:
             auth_code="",
             port=4000,
             host="127.0.0.1",
+            bridge_port=18765,
+            remote_platform_url="https://weread.111965.xyz",
             data_dir=str(runtime_paths.rss_service_data_dir),
             log_file=str(runtime_paths.rss_service_log_path),
         ),
@@ -455,6 +465,8 @@ def _reset_legacy_config(data: Any) -> AppConfig:
         auth_code="",
         port=port,
         host="127.0.0.1",
+        bridge_port=config.rss_service.bridge_port,
+        remote_platform_url=config.rss_service.remote_platform_url,
         data_dir=config.rss_service.data_dir,
         log_file=config.rss_service.log_file,
     )

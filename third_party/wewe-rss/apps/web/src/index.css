@@ -251,6 +251,10 @@ select {
   background: color-mix(in srgb, var(--rss-danger) 4%, transparent);
 }
 
+.rss-button.is-rect {
+  border-radius: 14px;
+}
+
 .rss-button.is-success {
   color: var(--rss-ok);
   border-color: color-mix(in srgb, var(--rss-ok) 40%, var(--rss-line));

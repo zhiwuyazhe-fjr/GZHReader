@@ -7,6 +7,8 @@ import { clearAuthCode, getAuthCode, setAuthCode } from '../utils/auth';
 import { enabledAuthCode, serverOriginUrl } from '../utils/env';
 import { isTRPCClientError, trpc } from '../utils/trpc';
 
+const reconnectMessage = '删除账号后，重新扫码添加';
+
 export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -27,6 +29,11 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
     setAuthCode('');
     navigate('/login');
   };
+
+  const isHandledAccountStateError = (message: string) =>
+    message.includes(reconnectMessage) ||
+    message.includes('没有可用账号') ||
+    message.includes('当前账号需要重新登录');
 
   const [queryClient] = useState(
     () =>
@@ -49,6 +56,9 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
               }
 
               if (error.data?.httpStatus === 401) {
+                if (isHandledAccountStateError(error.message)) {
+                  return;
+                }
                 if (enabledAuthCode) {
                   toast.error('后台访问码已失效', {
                     description: error.message,
@@ -58,9 +68,11 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
                 return;
               }
 
-              toast.error('请求没有成功', {
-                description: error.message,
-              });
+              if (!isHandledAccountStateError(error.message)) {
+                toast.error('请求没有成功', {
+                  description: error.message,
+                });
+              }
             },
           },
           mutations: {
@@ -70,6 +82,9 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
               }
 
               if (error.data?.httpStatus === 401) {
+                if (isHandledAccountStateError(error.message)) {
+                  return;
+                }
                 if (enabledAuthCode) {
                   toast.error('后台访问码已失效', {
                     description: error.message,
@@ -79,9 +94,11 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
                 return;
               }
 
-              toast.error('请求没有成功', {
-                description: error.message,
-              });
+              if (!isHandledAccountStateError(error.message)) {
+                toast.error('请求没有成功', {
+                  description: error.message,
+                });
+              }
             },
           },
         },
