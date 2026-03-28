@@ -14,6 +14,7 @@
       <div>
         <h2 class="settings-title">AI模型配置</h2>
         <div class="panel-copy">平时只需要填 Base URL Model 和 API Key</div>
+        <div class="field-note">没有配置AI也可以生成纯整理版日报</div>
       </div>
       <form method="post" action="/actions/save-llm" class="settings-grid">
         <div class="field-grid">
@@ -84,7 +85,7 @@
         <h2 class="settings-title">自动运行</h2>
         <div class="panel-copy">把每天整理日报的时间定下来</div>
       </div>
-      <form method="post" action="/actions/save-schedule" class="settings-grid">
+      <form id="schedule-settings-form" method="post" action="/actions/install-schedule" class="settings-grid">
         <div class="field-grid">
           <div class="field">
             <label>小时</label>
@@ -111,19 +112,11 @@
             {% endfor %}
           </select>
         </div>
-        <div class="field-note">{{ status.schedule.detail }}<br>{{ status.schedule.daily_limit_label }}</div>
-        <div class="inline-actions">
-          <button class="primary" type="submit">保存自动运行设置</button>
-        </div>
+        <div id="settings-schedule-note" class="field-note">{{ status.schedule.detail }}<br>{{ status.schedule.daily_limit_label }}</div>
       </form>
       <div class="inline-actions">
-        <form method="post" action="/actions/install-schedule">
-          <input type="hidden" name="run_hour" value="{{ schedule_hour }}">
-          <input type="hidden" name="run_minute" value="{{ schedule_minute }}">
-          <input type="hidden" name="daily_article_limit" value="{{ daily_article_limit }}">
-          <button class="success" type="submit">安装自动运行</button>
-        </form>
-        <form method="post" action="/actions/remove-schedule"><button class="warn" type="submit">移除自动运行</button></form>
+        <button id="settings-schedule-submit" class="primary" type="submit" form="schedule-settings-form">启用自动运行</button>
+        <form method="post" action="/actions/remove-schedule"><button class="warn" type="submit">关闭自动运行</button></form>
       </div>
     </section>
 
@@ -140,16 +133,16 @@
           <div class="status-list">
             <div class="status-item">
               <strong>服务状态</strong>
-              <span class="status-pill {{ 'ok' if status.service.web_ok else 'warn' }}">{{ '可访问' if status.service.web_ok else '准备中' }}</span>
-              <div class="status-detail">{{ status.service.web_detail }}</div>
+              <span id="settings-service-pill" class="status-pill warn">正在检查</span>
+              <div id="settings-service-detail" class="status-detail">{{ status.service.web_detail }}</div>
             </div>
             <div class="status-item">
               <strong>后台地址</strong>
-              <div class="status-detail">{{ status.service.admin_url }}</div>
+              <div id="settings-service-admin" class="status-detail">{{ status.service.admin_url }}</div>
             </div>
             <div class="status-item">
               <strong>聚合源地址</strong>
-              <div class="status-detail">{{ status.service.feed_url }}</div>
+              <div id="settings-service-feed" class="status-detail">{{ status.service.feed_url }}</div>
             </div>
           </div>
           <form method="post" action="/actions/service/save" class="settings-grid">
@@ -163,7 +156,10 @@
           </form>
           <div class="inline-actions">
             <form method="post" action="/actions/service/restart"><button class="secondary" type="submit">重启服务</button></form>
-            <form method="post" action="/actions/service/open-admin"><button class="secondary" type="submit">打开后台</button></form>
+            <form method="post" action="/actions/service/open-admin" data-open-admin-form data-admin-url="{{ status.service.admin_url }}">
+              <input type="hidden" name="return_to" value="">
+              <button class="secondary" type="submit">打开后台</button>
+            </form>
           </div>
         </div>
       </details>
@@ -190,4 +186,36 @@
       </details>
     </section>
   </div>
+
+  <script>
+    (() => {
+      const setText = (id, value) => {
+        const node = document.getElementById(id);
+        if (node && typeof value === 'string') node.textContent = value;
+      };
+      const setHtml = (id, value) => {
+        const node = document.getElementById(id);
+        if (node && typeof value === 'string') node.innerHTML = value;
+      };
+      const setPill = (id, label, tone) => {
+        const node = document.getElementById(id);
+        if (!node) return;
+        node.textContent = label;
+        node.classList.remove('ok', 'warn', 'bad');
+        node.classList.add(tone);
+      };
+      window.fetch('/api/status')
+        .then((response) => response.ok ? response.json() : null)
+        .then((payload) => {
+          if (!payload) return;
+          setHtml('settings-schedule-note', `${payload.schedule.detail}<br>${payload.schedule.daily_limit_label}`);
+          setText('settings-schedule-submit', payload.schedule.installed ? '更新自动运行' : '启用自动运行');
+          setPill('settings-service-pill', payload.service.web_ok ? '可访问' : '待处理', payload.service.web_ok ? 'ok' : 'warn');
+          setText('settings-service-detail', payload.service.web_detail);
+          setText('settings-service-admin', payload.service.admin_url);
+          setText('settings-service-feed', payload.service.feed_url);
+        })
+        .catch(() => {});
+    })();
+  </script>
 {% endblock %}

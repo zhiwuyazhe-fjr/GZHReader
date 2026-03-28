@@ -4,6 +4,7 @@ import { useTheme } from 'next-themes';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { readThemePreference, themeStorageKey } from '@web/utils/themeSync';
+import { syncWorkspaceReturn } from '@web/utils/workspaceReturn';
 
 function SharedThemeBridge() {
   const { setTheme } = useTheme();
@@ -11,6 +12,7 @@ function SharedThemeBridge() {
   useEffect(() => {
     const syncTheme = () => {
       setTheme(readThemePreference());
+      syncWorkspaceReturn();
     };
 
     syncTheme();

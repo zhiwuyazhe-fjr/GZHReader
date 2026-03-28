@@ -1,15 +1,17 @@
-import { Controller, Get, Render, Response } from '@nestjs/common';
+import { Controller, Get, Post, Render, Response } from '@nestjs/common';
 import { AppService } from './app.service';
 import { ConfigService } from '@nestjs/config';
 import { ConfigurationType } from './configuration';
 import { Response as Res } from 'express';
 import { join } from 'path';
+import { TrpcService } from '@server/trpc/trpc.service';
 
 @Controller()
 export class AppController {
   constructor(
     private readonly appService: AppService,
     private readonly configService: ConfigService,
+    private readonly trpcService: TrpcService,
   ) {}
 
   @Get()
@@ -46,5 +48,10 @@ export class AppController {
       enabledAuthCode: Boolean(code),
       iconUrl: '/brand/gzhreader-icon.svg',
     };
+  }
+
+  @Post('/internal/refresh-all')
+  async refreshAll() {
+    return this.trpcService.refreshAllMpArticlesAndUpdateFeed();
   }
 }

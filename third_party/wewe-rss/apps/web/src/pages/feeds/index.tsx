@@ -1,8 +1,10 @@
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { useNavigate, useParams } from 'react-router-dom';
 import { trpc } from '@web/utils/trpc';
+import { returnToWorkspace } from '@web/utils/workspaceReturn';
 import ArticleList from './list';
 
 type FeedItem = {
@@ -19,7 +21,39 @@ type RefreshResult = {
   refreshedCount?: number;
   totalCount?: number;
   budgetRemaining?: number;
+  reasonCode?: string;
   reason?: string;
+  detail?: string;
+};
+
+type FeedMeta = {
+  intro: string;
+  tags: string[];
+};
+
+const tagPattern = /#([^\s#]+)/g;
+
+const parseFeedMeta = (intro?: string): FeedMeta => {
+  const source = (intro || '').trim();
+  const tags = Array.from(
+    new Set(
+      Array.from(source.matchAll(tagPattern))
+        .map((match) => match[1]?.trim())
+        .filter(Boolean),
+    ),
+  ) as string[];
+
+  const cleanIntro = source
+    .replace(tagPattern, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[，,、]\s*[，,、]/g, '，')
+    .trim()
+    .replace(/^[，,、\s]+|[，,、\s]+$/g, '');
+
+  return {
+    intro: cleanIntro,
+    tags,
+  };
 };
 
 const refreshSummaryText = (result?: RefreshResult) => {
@@ -27,15 +61,42 @@ const refreshSummaryText = (result?: RefreshResult) => {
     return '这轮刷新已经完成';
   }
 
+  if (
+    result.reasonCode === 'no_available_accounts' ||
+    result.reasonCode === 'no_accounts' ||
+    result.reasonCode === 'all_disabled' ||
+    result.reasonCode === 'relogin_required'
+  ) {
+    return result.detail || '现在没有可用账号，请先去账号页看一下状态';
+  }
+
+  if (result.reasonCode === 'budget_exhausted') {
+    return result.detail || '今天的整体刷新次数已经用完，请明天再试';
+  }
+
   const refreshedCount = result.refreshedCount ?? 0;
   const totalCount = result.totalCount ?? refreshedCount;
-  const budgetRemaining =
-    typeof result.budgetRemaining === 'number'
-      ? `，剩余预算 ${result.budgetRemaining} 次`
-      : '';
   const reason = result.reason ? `，${result.reason}` : '';
+  return `本轮处理 ${refreshedCount} / ${totalCount} 个订阅${reason}`;
+};
 
-  return `本轮处理 ${refreshedCount} / ${totalCount} 个订阅${budgetRemaining}${reason}`;
+const normalizeImportFailure = (error: unknown) => {
+  const message =
+    error instanceof Error ? error.message : '请先去账号页看一下账号状态';
+  if (
+    message.includes('没有可用账号') ||
+    message.includes('还没有可用账号') ||
+    message.includes('重新扫码')
+  ) {
+    return {
+      title: '现在还不能识别这条链接',
+      detail: '先去账号页确认至少有一个账号可用，再回来接入订阅',
+    };
+  }
+  return {
+    title: '现在还没法识别这条链接',
+    detail: message,
+  };
 };
 
 const Feeds = () => {
@@ -79,6 +140,17 @@ const Feeds = () => {
     trpc.feed.delete.useMutation({});
 
   useEffect(() => {
+    if (!isModalOpen) {
+      return undefined;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isModalOpen]);
+
+  useEffect(() => {
     setCurrentMpId(id || '');
   }, [id]);
 
@@ -86,6 +158,10 @@ const Feeds = () => {
   const currentMpInfo = useMemo(
     () => items.find((item) => item.id === currentMpId),
     [currentMpId, items],
+  );
+  const currentMeta = useMemo(
+    () => parseFeedMeta(currentMpInfo?.mpIntro),
+    [currentMpInfo?.mpIntro],
   );
 
   const totalFeeds = items.length;
@@ -107,7 +183,14 @@ const Feeds = () => {
     }
 
     for (const link of links) {
-      const result = await getMpInfo({ wxsLink: link });
+      let result;
+      try {
+        result = await getMpInfo({ wxsLink: link });
+      } catch (error) {
+        const failure = normalizeImportFailure(error);
+        toast.warning(failure.title, { description: failure.detail });
+        continue;
+      }
       if (!result[0]) {
         toast.error('这条链接没有识别成功', {
           description: '请确认它来自公众号文章页',
@@ -125,13 +208,29 @@ const Feeds = () => {
         status: 1,
       });
 
-      const refreshResult = (await refreshMpArticles({
-        mpId: item.id,
-      })) as RefreshResult;
+      let refreshResult: RefreshResult | undefined;
+      try {
+        refreshResult = (await refreshMpArticles({
+          mpId: item.id,
+        })) as RefreshResult;
+      } catch (error) {
+        toast.warning('订阅已经接入，等待稍后刷新', {
+          description:
+            error instanceof Error
+              ? error.message
+              : '当前暂时没能完成首次刷新',
+        });
+      }
 
-      toast.success('订阅已经接入', {
-        description: `${item.name}，${refreshSummaryText(refreshResult)}`,
-      });
+      if (refreshResult?.completed) {
+        toast.success('订阅已经接入并完成首次刷新', {
+          description: `${item.name}，${refreshSummaryText(refreshResult)}`,
+        });
+      } else if (refreshResult) {
+        toast.warning('订阅已经接入，等待稍后刷新', {
+          description: refreshSummaryText(refreshResult),
+        });
+      }
     }
 
     await utils.article.list.reset();
@@ -150,6 +249,12 @@ const Feeds = () => {
     })) as RefreshResult;
     await refetchFeedList();
     await utils.article.list.reset();
+    if (result?.completed === false) {
+      toast.warning(result.reason || '这次没能刷新', {
+        description: refreshSummaryText(result),
+      });
+      return;
+    }
     toast.success('当前订阅已经刷新', {
       description: refreshSummaryText(result),
     });
@@ -159,12 +264,15 @@ const Feeds = () => {
     const result = (await refreshMpArticles({})) as RefreshResult;
     await refetchFeedList();
     await utils.article.list.reset();
-    toast.success(
-      result?.completed === false ? '这轮刷新已经先暂停' : '订阅列表已经刷新',
-      {
+    if (result?.completed === false) {
+      toast.warning(result.reason || '这次没能完成刷新', {
         description: refreshSummaryText(result),
-      },
-    );
+      });
+      return;
+    }
+    toast.success('订阅列表已经刷新', {
+      description: refreshSummaryText(result),
+    });
   };
 
   const toggleHistorySync = async () => {
@@ -192,6 +300,66 @@ const Feeds = () => {
     navigate('/feeds');
     toast.success('订阅已经移除');
   };
+
+  const renderImportModal =
+    isModalOpen && typeof document !== 'undefined'
+      ? createPortal(
+          <div className="rss-modal-backdrop" onClick={() => setIsModalOpen(false)}>
+            <div
+              className="rss-modal-card"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="rss-modal-head">
+                <div className="rss-stack">
+                  <div className="rss-eyebrow">接入入口</div>
+                  <h2 className="rss-modal-title">添加新的公众号订阅</h2>
+                  <p className="rss-panel-copy">
+                    粘贴公众号文章分享链接
+                    <br />
+                    识别成功后会先保存订阅 能刷新时再补拉文章
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rss-button rss-modal-close"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  ×
+                </button>
+              </div>
+
+              <label className="rss-field">
+                <span className="rss-field-label">公众号文章链接</span>
+                <textarea
+                  className="rss-textarea"
+                  value={wxsLink}
+                  onChange={(event) => setWxsLink(event.target.value)}
+                  placeholder="https://mp.weixin.qq.com/s/..."
+                />
+              </label>
+
+              <div className="rss-actions">
+                <button
+                  type="button"
+                  className="rss-button is-primary"
+                  disabled={isGetMpInfoLoading || isAddFeedLoading}
+                  onClick={handleConfirm}
+                >
+                  {isGetMpInfoLoading || isAddFeedLoading ? '接入中' : '确认接入'}
+                </button>
+                <button
+                  type="button"
+                  className="rss-button is-secondary"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  稍后再说
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <>
@@ -221,6 +389,13 @@ const Feeds = () => {
             >
               {isRefreshAllRunning || isRefreshLoading ? '更新全部中' : '更新全部'}
             </button>
+            <button
+              type="button"
+              className="rss-button is-secondary"
+              onClick={returnToWorkspace}
+            >
+              返回工作台
+            </button>
           </div>
         </div>
         <aside className="rss-hero-side">
@@ -233,9 +408,9 @@ const Feeds = () => {
             <div className="rss-stat-copy">{lastUpdatedLabel}</div>
           </div>
           <div className="rss-note">
-            刷新会自动分批进行
+            刷新会先照顾账号状态
             <br />
-            额度紧张时会先保护账号状态
+            没有可用账号时会直接提醒你
           </div>
         </aside>
       </section>
@@ -251,7 +426,8 @@ const Feeds = () => {
               </p>
             </div>
           </div>
-          <div className="rss-list">
+          <div className="rss-sidebar-scroll">
+            <div className="rss-list">
             <button
               type="button"
               className={`rss-feed-item${currentMpId === '' ? ' is-active' : ''}`}
@@ -261,12 +437,7 @@ const Feeds = () => {
               }}
             >
               <div className="rss-feed-avatar rss-feed-avatar--placeholder">全</div>
-              <div className="rss-stack">
-                <div className="rss-feed-name">全部订阅</div>
-                <div className="rss-feed-intro">
-                  在这里统一查看和刷新已经接入的公众号
-                </div>
-              </div>
+              <div className="rss-feed-name">全部订阅</div>
             </button>
 
             {!items.length ? (
@@ -297,31 +468,54 @@ const Feeds = () => {
                       {item.mpName.slice(0, 1)}
                     </div>
                   )}
-                  <div className="rss-stack">
-                    <div className="rss-feed-name">{item.mpName}</div>
-                    <div className="rss-feed-intro">
-                      {item.mpIntro || '已经接入 现在可以继续刷新和查看文章'}
-                    </div>
-                  </div>
+                  <div className="rss-feed-name">{item.mpName}</div>
                 </button>
               ))
             )}
+            </div>
           </div>
         </aside>
 
         <section className="rss-stack">
           <article className="rss-panel">
             <div className="rss-panel-header">
-              <div>
-                <h2 className="rss-panel-title">
-                  {currentMpInfo?.mpName || '全部文章'}
-                </h2>
-                <p className="rss-panel-copy">
-                  {currentMpInfo
-                    ? currentMpInfo.mpIntro ||
-                      '在这里刷新当前订阅，或继续查看文章列表'
-                    : '在这里统一刷新订阅，并查看今天收进来的文章'}
-                </p>
+              <div className="rss-feed-detail-header">
+                {currentMpInfo ? (
+                  currentMpInfo.mpCover ? (
+                    <img
+                      className="rss-feed-detail-cover"
+                      src={currentMpInfo.mpCover}
+                      alt={currentMpInfo.mpName}
+                    />
+                  ) : (
+                    <div className="rss-feed-detail-cover rss-feed-avatar--placeholder">
+                      {currentMpInfo.mpName.slice(0, 1)}
+                    </div>
+                  )
+                ) : (
+                  <div className="rss-feed-detail-cover rss-feed-avatar--placeholder">
+                    全
+                  </div>
+                )}
+                <div className="rss-stack">
+                  <h2 className="rss-panel-title">
+                    {currentMpInfo?.mpName || '全部文章'}
+                  </h2>
+                  <p className="rss-panel-copy">
+                    {currentMpInfo
+                      ? currentMeta.intro || '在这里刷新当前订阅，或继续查看文章列表'
+                      : '在这里统一刷新订阅，并查看今天收进来的文章'}
+                  </p>
+                  {currentMeta.tags.length > 0 && (
+                    <div className="rss-tag-row">
+                      {currentMeta.tags.map((tag) => (
+                        <span key={tag} className="rss-chip rss-chip-tag">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="rss-actions">
                 {currentMpInfo ? (
@@ -348,7 +542,7 @@ const Feeds = () => {
                     )}
                     <button
                       type="button"
-                      className="rss-button is-danger"
+                      className="rss-button is-soft-danger"
                       disabled={isDeleteFeedLoading}
                       onClick={removeCurrentFeed}
                     >
@@ -373,7 +567,7 @@ const Feeds = () => {
             <div className="rss-note">
               {currentMpInfo
                 ? `最近更新时间 ${lastUpdatedLabel}`
-                : '刷新会自动分批处理 先保证账号健康状态'}
+                : '刷新会先照顾账号状态 没有可用账号时会直接提醒你'}
             </div>
           </article>
 
@@ -390,60 +584,7 @@ const Feeds = () => {
           </article>
         </section>
       </div>
-
-      {isModalOpen && (
-        <div className="rss-modal-backdrop" onClick={() => setIsModalOpen(false)}>
-          <div
-            className="rss-modal-card"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="rss-modal-head">
-              <div className="rss-stack">
-                <div className="rss-eyebrow">接入入口</div>
-                <h2 className="rss-modal-title">添加新的公众号订阅</h2>
-                <p className="rss-panel-copy">
-                  粘贴公众号文章分享链接 后台会自动识别并接入订阅
-                </p>
-              </div>
-              <button
-                type="button"
-                className="rss-button rss-modal-close"
-                onClick={() => setIsModalOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-
-            <label className="rss-field">
-              <span className="rss-field-label">公众号文章链接</span>
-              <textarea
-                className="rss-textarea"
-                value={wxsLink}
-                onChange={(event) => setWxsLink(event.target.value)}
-                placeholder="https://mp.weixin.qq.com/s/..."
-              />
-            </label>
-
-            <div className="rss-actions">
-              <button
-                type="button"
-                className="rss-button is-primary"
-                disabled={isGetMpInfoLoading || isAddFeedLoading}
-                onClick={handleConfirm}
-              >
-                {isGetMpInfoLoading || isAddFeedLoading ? '接入中' : '确认接入'}
-              </button>
-              <button
-                type="button"
-                className="rss-button is-secondary"
-                onClick={() => setIsModalOpen(false)}
-              >
-                稍后再说
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderImportModal}
     </>
   );
 };

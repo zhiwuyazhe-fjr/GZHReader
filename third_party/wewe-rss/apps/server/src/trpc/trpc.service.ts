@@ -35,6 +35,23 @@ type AccountState = {
   updatedAt?: Date | null;
 };
 
+type RefreshFailure = Error & {
+  reasonCode?: string;
+  detail?: string;
+};
+
+type RefreshResultPayload = {
+  completed: boolean;
+  refreshedCount: number;
+  totalCount: number;
+  budgetRemaining: number;
+  reasonCode: string;
+  reason: string;
+  detail: string;
+};
+
+const accountProbeFreshnessWindowMs = 2 * 60 * 60 * 1000;
+
 @Injectable()
 export class TrpcService {
   trpc = initTRPC.create();
@@ -109,6 +126,74 @@ export class TrpcService {
     return this.getEffectiveDailyCount(account) >= accountDailyLimit;
   }
 
+  private createRefreshFailure(
+    reasonCode: string,
+    reason: string,
+    detail: string,
+  ): RefreshFailure {
+    const error = new Error(reason) as RefreshFailure;
+    error.reasonCode = reasonCode;
+    error.detail = detail;
+    return error;
+  }
+
+  private async getAvailabilityFailure(): Promise<RefreshFailure> {
+    const allAccounts = (await this.prismaService.account.findMany()) as AccountState[];
+    if (allAccounts.length === 0) {
+      return this.createRefreshFailure(
+        'no_accounts',
+        '还没有可用账号',
+        '请先去账号页添加一个读书账号',
+      );
+    }
+
+    const enabledAccounts = allAccounts.filter(
+      (account) => account.status === statusMap.ENABLE,
+    );
+    if (enabledAccounts.length === 0) {
+      if (allAccounts.some((account) => account.status === statusMap.DISABLE)) {
+        return this.createRefreshFailure(
+          'all_disabled',
+          '当前没有启用的账号',
+          '请先去账号页启用一个账号，再回来刷新',
+        );
+      }
+      return this.createRefreshFailure(
+        'relogin_required',
+        '当前账号需要重新登录',
+        '请先去账号页重新扫码，再回来刷新',
+      );
+    }
+
+    const coolingCount = enabledAccounts.filter((account) =>
+      this.isCooling(account),
+    ).length;
+    const quotaReachedCount = enabledAccounts.filter((account) =>
+      this.isQuotaReached(account),
+    ).length;
+
+    if (coolingCount > 0 || quotaReachedCount > 0) {
+      const detailParts: string[] = [];
+      if (coolingCount > 0) {
+        detailParts.push(`${coolingCount} 个账号正在暂时休息`);
+      }
+      if (quotaReachedCount > 0) {
+        detailParts.push(`${quotaReachedCount} 个账号已到今天上限`);
+      }
+      return this.createRefreshFailure(
+        'no_available_accounts',
+        '这次没能刷新，因为现在没有可用账号',
+        detailParts.join('，') || '请稍后再试，或先去账号页检查状态',
+      );
+    }
+
+    return this.createRefreshFailure(
+      'no_available_accounts',
+      '这次没能刷新，因为现在没有可用账号',
+      '请先去账号页检查状态后再试',
+    );
+  }
+
   private describeAccountHealth(account: AccountState) {
     const now = this.getNowUnix();
     const dailyCount = this.getEffectiveDailyCount(account);
@@ -117,7 +202,7 @@ export class TrpcService {
         healthStatus: 'needs_reauth',
         healthLabel: '待重登',
         healthTone: 'danger',
-        healthDetail: account.lastError || '这个账号需要重新扫码登录',
+        healthDetail: account.lastError || '这个账号已经过期，需要重新扫码登录',
       };
     }
     if (account.status === statusMap.DISABLE) {
@@ -132,19 +217,19 @@ export class TrpcService {
       const until = dayjs.unix(account.cooldownUntil).format('MM-DD HH:mm');
       return {
         healthStatus: 'cooldown',
-        healthLabel: '冷却中',
+        healthLabel: '暂时休息中',
         healthTone: 'warning',
         healthDetail: account.lastError
-          ? `${account.lastError}，冷却至 ${until}`
-          : `当前处于冷却中，预计 ${until} 后恢复`,
+          ? `${account.lastError}，预计 ${until} 后恢复`
+          : `系统正在保护这个账号，预计 ${until} 后恢复`,
       };
     }
     if (dailyCount >= accountDailyLimit) {
       return {
         healthStatus: 'cooldown',
-        healthLabel: '冷却中',
+        healthLabel: '暂时休息中',
         healthTone: 'warning',
-        healthDetail: `今日请求已达到 ${accountDailyLimit} 次上限，将在明天自动恢复`,
+        healthDetail: `今天已经达到 ${accountDailyLimit} 次上限，明天会自动恢复`,
       };
     }
     return {
@@ -164,6 +249,18 @@ export class TrpcService {
         consecutiveAuthFailures: 0,
         cooldownUntil: null,
         lastError: null,
+      },
+    });
+  }
+
+  private async markAccountNeedsReauth(id: string) {
+    await this.prismaService.account.updateMany({
+      where: { id },
+      data: {
+        consecutiveAuthFailures: authFailureLimit,
+        cooldownUntil: null,
+        status: statusMap.INVALID,
+        lastError: '这个账号已经过期，需要重新扫码登录',
       },
     });
   }
@@ -216,15 +313,85 @@ export class TrpcService {
     if (accounts.length > 0) {
       return accounts[0];
     }
+    throw await this.getAvailabilityFailure();
+  }
 
-    const allAccounts = (await this.prismaService.account.findMany()) as AccountState[];
-    if (allAccounts.length === 0) {
-      throw new Error('暂无可用读书账号，请先扫码添加账号');
+  private needsAccountProbe(account: AccountState) {
+    if (!account.lastSuccessAt) {
+      return true;
     }
-    if (allAccounts.every((account) => account.status === statusMap.INVALID)) {
-      throw new Error('当前所有账号都需要重新扫码登录');
+    if (account.lastError) {
+      return true;
     }
-    throw new Error('当前所有账号都在冷却中或已达到今日预算，请稍后再试');
+    return Date.now() - account.lastSuccessAt.getTime() >= accountProbeFreshnessWindowMs;
+  }
+
+  private async getProbeFeedId(preferredMpId?: string) {
+    if (preferredMpId) {
+      return preferredMpId;
+    }
+    const feed = await this.prismaService.feed.findFirst({
+      orderBy: [{ syncTime: 'desc' }, { createdAt: 'asc' }],
+      select: { id: true },
+    });
+    return feed?.id || null;
+  }
+
+  private async probeAccount(account: AccountState, mpId: string) {
+    await this.request.get(`/api/v2/platform/mps/${mpId}/articles`, {
+      headers: {
+        xid: account.id,
+        Authorization: `Bearer ${account.token}`,
+      },
+      params: { page: 1 },
+      timeout: 8 * 1e3,
+    });
+    await this.recordSuccessfulAccountRequest(account.id);
+  }
+
+  private async precheckAccountAvailability(preferredMpId?: string) {
+    const budget = await this.getDailyUsageSummary();
+    if (budget.used >= ipDailyBudget) {
+      throw this.createRefreshFailure(
+        'budget_exhausted',
+        '今天整体刷新次数已用完',
+        '今天的整体刷新额度已经用完，请明天再试',
+      );
+    }
+
+    const healthyAccounts = await this.getHealthyAccounts();
+    if (healthyAccounts.length < 1) {
+      throw await this.getAvailabilityFailure();
+    }
+
+    const probeMpId = await this.getProbeFeedId(preferredMpId);
+    for (const account of healthyAccounts) {
+      if (!this.needsAccountProbe(account) || !probeMpId) {
+        return account;
+      }
+
+      try {
+        await this.probeAccount(account, probeMpId);
+        return account;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('WeReadError401')) {
+          await this.markAccountNeedsReauth(account.id);
+          continue;
+        }
+        if (message.includes('WeReadError429') || message.includes('WeReadError400')) {
+          continue;
+        }
+
+        throw this.createRefreshFailure(
+          'refresh_probe_failed',
+          '这次没能完成账号检查',
+          '请稍后再试，或先去账号页检查状态',
+        );
+      }
+    }
+
+    throw await this.getAvailabilityFailure();
   }
 
   private async recordSuccessfulAccountRequest(id: string) {
@@ -272,6 +439,9 @@ export class TrpcService {
           consecutiveAuthFailures: nextFailures,
           cooldownUntil: now + authCooldownSeconds,
           status: shouldInvalidate ? statusMap.INVALID : statusMap.ENABLE,
+          lastError: shouldInvalidate
+            ? '这个账号已经过期，需要重新扫码登录'
+            : '登录状态不稳定，系统让它先休息一会',
         },
       });
       this.logger.warn(
@@ -290,6 +460,7 @@ export class TrpcService {
           cooldownUntil: this.getNextShanghaiDayUnix(),
           dailyRequestCount: accountDailyLimit,
           dailyRequestDate: this.getTodayDate(),
+          lastError: '这个账号今天用得有点多，系统让它休息到明天',
         },
       });
       this.logger.warn(`account ${id} hit 429 and entered day cooldown`);
@@ -302,6 +473,9 @@ export class TrpcService {
       data: {
         ...baseData,
         cooldownUntil: now + cooldownSeconds,
+        lastError: errMsg.includes('WeReadError400')
+          ? '这次请求没有成功，系统稍后会再试'
+          : '系统正在短暂保护这个账号，请稍后再试',
       },
     });
     this.logger.warn(`account ${id} entered transient cooldown`);
@@ -400,6 +574,38 @@ export class TrpcService {
     return { hasHistory };
   }
 
+  async refreshSingleMpArticlesAndUpdateFeed(
+    mpId: string,
+  ): Promise<RefreshResultPayload> {
+    try {
+      await this.precheckAccountAvailability(mpId);
+      const result = await this.refreshMpArticlesAndUpdateFeed(mpId);
+      const summary = await this.getDailyUsageSummary();
+      return {
+        completed: true,
+        refreshedCount: 1,
+        totalCount: 1,
+        budgetRemaining: summary.remaining,
+        reasonCode: '',
+        reason: '',
+        detail: '',
+        ...result,
+      };
+    } catch (error) {
+      const summary = await this.getDailyUsageSummary();
+      const failure = error as RefreshFailure;
+      return {
+        completed: false,
+        refreshedCount: 0,
+        totalCount: 1,
+        budgetRemaining: summary.remaining,
+        reasonCode: failure.reasonCode || 'refresh_failed',
+        reason: failure.message || '这次刷新没有成功',
+        detail: failure.detail || '请稍后再试',
+      };
+    }
+  }
+
   async getHistoryMpArticles(mpId: string) {
     if (this.inProgressHistoryMp.id === mpId) {
       this.logger.log(`getHistoryMpArticles(${mpId}) is running`);
@@ -475,25 +681,37 @@ export class TrpcService {
         refreshedCount: 0,
         totalCount: 0,
         budgetRemaining: (await this.getDailyUsageSummary()).remaining,
+        reasonCode: 'already_running',
         reason: '刷新任务已经在运行中',
+        detail: '当前已经有一轮刷新在进行，稍后会自动结束',
       };
     }
     const mps = await this.prismaService.feed.findMany();
     this.isRefreshAllMpArticlesRunning = true;
     let refreshedCount = 0;
+    let reasonCode = '';
     let reason = '';
+    let detail = '';
     try {
+      if (mps.length > 0) {
+        await this.precheckAccountAvailability(mps[0].id);
+      }
       for (const { id } of mps) {
         const budget = await this.getDailyUsageSummary();
         if (budget.used >= ipDailyBudget) {
-          reason = '已达到今日刷新预算上限，剩余订阅将留待稍后继续';
+          reasonCode = 'budget_exhausted';
+          reason = '今天整体刷新次数已用完';
+          detail = '今天的整体刷新额度已经用完，请明天再试';
           break;
         }
         try {
           await this.refreshMpArticlesAndUpdateFeed(id);
           refreshedCount += 1;
         } catch (error) {
-          reason = error instanceof Error ? error.message : '刷新过程中出现异常';
+          const failure = error as RefreshFailure;
+          reasonCode = failure.reasonCode || 'refresh_failed';
+          reason = failure.message || '刷新过程中出现异常';
+          detail = failure.detail || '请稍后再试';
           break;
         }
 
@@ -511,12 +729,15 @@ export class TrpcService {
       refreshedCount,
       totalCount: mps.length,
       budgetRemaining: summary.remaining,
+      reasonCode,
       reason,
+      detail,
     };
   }
 
   async getMpInfo(url: string) {
     url = url.trim();
+    await this.precheckAccountAvailability();
     const account = await this.getAvailableAccount();
 
     const results = await this.request

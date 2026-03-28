@@ -2,9 +2,11 @@ import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { healthToneClassMap } from '@web/constants';
 import { StatusDropdown } from '@web/components/StatusDropdown';
 import { trpc } from '@web/utils/trpc';
+import { returnToWorkspace } from '@web/utils/workspaceReturn';
 
 const AccountPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,6 +26,17 @@ const AccountPage = () => {
         }
       },
     });
+
+  useEffect(() => {
+    if (!isModalOpen) {
+      return undefined;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isModalOpen]);
 
   const { data: loginResult } = trpc.platform.getLoginResult.useQuery(
     { id: loginData?.uuid ?? '' },
@@ -73,7 +86,7 @@ const AccountPage = () => {
     [items],
   );
   const cooldownCount = useMemo(
-    () => items.filter((item: any) => item.healthLabel === '冷却中').length,
+    () => items.filter((item: any) => item.healthLabel === '暂时休息中').length,
     [items],
   );
   const reloginCount = useMemo(
@@ -91,6 +104,57 @@ const AccountPage = () => {
     setCountdown(0);
     await utils.platform.getLoginResult.cancel();
   };
+
+  const renderLoginModal =
+    isModalOpen && typeof document !== 'undefined'
+      ? createPortal(
+          <div className="rss-modal-backdrop" onClick={closeLoginModal}>
+            <div
+              className="rss-modal-card"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="rss-modal-head">
+                <div className="rss-stack">
+                  <div className="rss-eyebrow">扫码恢复</div>
+                  <h2 className="rss-modal-title">添加或恢复读书账号</h2>
+                  <p className="rss-panel-copy">
+                    扫码成功后 账号会立刻加入调度里
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rss-button rss-modal-close"
+                  onClick={closeLoginModal}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="rss-qrcode-wrap">
+                {loginData ? (
+                  <>
+                    <div className="rss-qrcode-board">
+                      {loginResult?.message && (
+                        <div className="rss-qrcode-mask">{loginResult.message}</div>
+                      )}
+                      <QRCodeSVG size={170} value={loginData.scanUrl} />
+                    </div>
+                    <div className="rss-note">
+                      微信扫码登录
+                      {!loginResult?.message && countdown > 0
+                        ? `，${countdown}s`
+                        : ''}
+                    </div>
+                  </>
+                ) : (
+                  <div className="rss-empty">二维码准备中</div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <>
@@ -113,6 +177,13 @@ const AccountPage = () => {
             <a className="rss-button is-secondary is-large" href="/dash/feeds">
               前往订阅源
             </a>
+            <button
+              type="button"
+              className="rss-button is-secondary is-large"
+              onClick={returnToWorkspace}
+            >
+              返回工作台
+            </button>
           </div>
         </div>
         <aside className="rss-hero-side">
@@ -121,7 +192,7 @@ const AccountPage = () => {
             <div className="rss-stat-value">{availableCount}</div>
           </div>
           <div className="rss-stat-item">
-            <div className="rss-stat-label">冷却中</div>
+            <div className="rss-stat-label">暂时休息中</div>
             <div className="rss-stat-copy">{cooldownCount} 个</div>
           </div>
           <div className="rss-stat-item">
@@ -141,7 +212,7 @@ const AccountPage = () => {
           <div>
             <h2 className="rss-panel-title">账号列表</h2>
             <p className="rss-panel-copy">
-              可用 冷却中 待重登 和禁用都会直接显示在这里
+              可用 暂时休息中 待重登 和禁用都会直接显示在这里
             </p>
           </div>
           <div className="rss-meta">
@@ -219,8 +290,11 @@ const AccountPage = () => {
                     />
                     <button
                       type="button"
-                      className="rss-button is-danger"
+                      className="rss-button is-soft-danger"
                       onClick={() => {
+                        if (!window.confirm(`确认移除账号 ${item.name} 吗`)) {
+                          return;
+                        }
                         deleteAccount(item.id).then(async () => {
                           toast.success('账号已经移除');
                           await utils.account.list.reset();
@@ -237,53 +311,7 @@ const AccountPage = () => {
           )}
         </div>
       </section>
-
-      {isModalOpen && (
-        <div className="rss-modal-backdrop" onClick={closeLoginModal}>
-          <div
-            className="rss-modal-card"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="rss-modal-head">
-              <div className="rss-stack">
-                <div className="rss-eyebrow">扫码恢复</div>
-                <h2 className="rss-modal-title">添加或恢复读书账号</h2>
-                <p className="rss-panel-copy">
-                  扫码成功后 账号会立刻加入调度里
-                </p>
-              </div>
-              <button
-                type="button"
-                className="rss-button rss-modal-close"
-                onClick={closeLoginModal}
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="rss-qrcode-wrap">
-              {loginData ? (
-                <>
-                  <div className="rss-qrcode-board">
-                    {loginResult?.message && (
-                      <div className="rss-qrcode-mask">{loginResult.message}</div>
-                    )}
-                    <QRCodeSVG size={170} value={loginData.scanUrl} />
-                  </div>
-                  <div className="rss-note">
-                    微信扫码登录
-                    {!loginResult?.message && countdown > 0
-                      ? `，${countdown}s`
-                      : ''}
-                  </div>
-                </>
-              ) : (
-                <div className="rss-empty">二维码准备中</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {renderLoginModal}
     </>
   );
 };

@@ -23,7 +23,7 @@ from .service import ReaderService
 from .storage import Storage
 from .summarizer import OpenAICompatibleSummarizer
 from .types import DoctorCheck
-from .webapp import create_app as create_web_app
+from .webapp import DashboardBackend, create_app as create_web_app
 
 app = typer.Typer(help="GZHReader desktop workspace")
 run_app = typer.Typer(help="Run briefing generation")
@@ -270,23 +270,12 @@ def _run_once(config_path: Path, target_date: date, feed_filter: str | None) -> 
 
     config_data = ensure_config(config_path)
     configure_logging(config_data.output.log_level)
-    storage = Storage(config_data.db_path)
-    service = ReaderService(
-        config=config_data,
-        storage=storage,
-        rss_client=RSSClient(config_data.rss),
-        summarizer=OpenAICompatibleSummarizer(config_data.llm),
-        briefing_builder=BriefingBuilder(),
-        article_fetcher=ArticleContentFetcher(config_data.article_fetch, config_data.rss),
-    )
-    result = service.run_for_date(target_date, feed_filter=None)
-    typer.echo(
-        f"run={result.run_key} collected={result.collected} inserted={result.inserted} "
-        f"summarized={result.summarized} filtered={result.filtered_out}"
-    )
-    typer.echo(f"briefing={result.briefing_path}")
-    for name, error in result.feed_errors.items():
-        typer.echo(f"error {name}: {error}")
+    ok, detail = DashboardBackend(config_path).run_now(target_date)
+    if ok:
+        typer.echo(detail)
+        return
+    typer.echo(detail)
+    raise typer.Exit(code=1)
 
 
 def build_doctor_checks(config_data: AppConfig) -> list[DoctorCheck]:

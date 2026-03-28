@@ -6,7 +6,11 @@ from datetime import date
 from html import escape
 import logging
 from pathlib import Path
+import threading
+import time
+from typing import Callable
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from markdown import markdown
 import yaml
@@ -58,15 +62,15 @@ def _build_about_modal() -> dict[str, object]:
         "button_label": "关于",
         "dialog_id": "about-dialog",
         "tagline": "把公众号阅读整理成更安静的本地工作台",
-        "motivation_title": "开发动机",
-        "motivation_text": "我想把公众号阅读从零散推送里解放出来，让每天的内容可以被安静地整理、回看和沉淀",
+        "motivation_title": "💡 开发动机",
+        "motivation_text": "从公众号碎片化的推送中解放出来，比起被小红点牵着走，更希望把优质内容安静地收进本地、沉淀为日报，留给真正需要深度阅读的时刻",
         "repo_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
-        "feedback_title": "反馈",
-        "feedback_text": "如果你遇到问题，或者想告诉我哪些地方还能更顺手，欢迎直接提 issue",
+        "feedback_title": "💬 问题反馈",
+        "feedback_text": "遇到账号配置、内容抓取、日报生成或交互体验上的问题，欢迎随时提 Issue！特别是那些让你觉得“多点了一步”、“等得太久”或“提示看不懂”的细节，都是接下来的优化方向",
         "issues_url": "https://github.com/zhiwuyazhe-fjr/GZHReader/issues",
         "feedback_label": "反馈问题",
-        "support_title": "支持项目",
-        "support_text": "如果它帮你省下了一点时间，也欢迎把它分享给同样需要的人",
+        "support_title": "❤️ 支持项目",
+        "support_text": "如果 GZHReader 帮你减少了信息噪音，让阅读整理更省心，请把它分享给有同样困扰的朋友。你的每一次安利，都是我持续把这个工具做稳、做精的最大底气😘",
         "share_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
         "support_label": "分享给朋友",
         "author_title": "关于作者",
@@ -120,6 +124,61 @@ class BriefingFile:
     name: str
     date_text: str
     path: str
+
+
+@dataclass(slots=True)
+class RunJobStatus:
+    id: str
+    target_date: str
+    status: str = "running"
+    stage: str = "正在准备"
+    detail: str = ""
+    level: str = "info"
+    started_at: float = 0.0
+    finished_at: float | None = None
+
+
+class RunJobStore:
+    def __init__(self) -> None:
+        self._jobs: dict[str, RunJobStatus] = {}
+        self._lock = threading.Lock()
+
+    def create(self, target_date: date) -> RunJobStatus:
+        job = RunJobStatus(
+            id=uuid4().hex,
+            target_date=target_date.isoformat(),
+            stage="正在检查账号",
+            detail="准备刷新订阅并生成日报",
+            started_at=time.time(),
+        )
+        with self._lock:
+            self._jobs[job.id] = job
+        return job
+
+    def update(self, job_id: str, **changes: str | float | None) -> RunJobStatus | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            for key, value in changes.items():
+                setattr(job, key, value)
+            return job
+
+    def get(self, job_id: str) -> RunJobStatus | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            return RunJobStatus(
+                id=job.id,
+                target_date=job.target_date,
+                status=job.status,
+                stage=job.stage,
+                detail=job.detail,
+                level=job.level,
+                started_at=job.started_at,
+                finished_at=job.finished_at,
+            )
 
 
 def _build_llm_status(config: AppConfig) -> dict[str, object]:
@@ -242,14 +301,51 @@ class DashboardBackend:
     def save_config(self, config: AppConfig) -> None:
         save_config(config, self.config_path)
 
+    def build_status_placeholder(self, config: AppConfig) -> dict[str, object]:
+        llm_status = _build_llm_status(config)
+        return {
+            "service": {
+                "runtime_ok": None,
+                "runtime_detail": "正在检查运行时",
+                "process_ok": None,
+                "process_detail": "正在检查本地服务",
+                "web_ok": None,
+                "web_detail": "正在确认后台是否可访问",
+                "admin_url": f"{config.rss_service.base_url.rstrip('/')}/dash",
+                "feed_url": f"{config.rss_service.base_url.rstrip('/')}/feeds/all.atom",
+            },
+            "article_fetch": {
+                "http_ok": None,
+                "http_detail": "正在检查",
+                "browser_ok": None,
+                "browser_detail": "正在检查",
+            },
+            "llm": llm_status,
+            "schedule": {
+                "installed": None,
+                "detail": "正在检查每日自动整理状态",
+                "daily_limit_label": describe_daily_article_limit(config.rss.daily_article_limit),
+            },
+            "source": {
+                "ok": None,
+                "detail": "正在确认订阅是否可读取",
+            },
+        }
+
+    def get_status_payload(self) -> dict[str, object]:
+        config = self.load_config()
+        configure_logging(config.output.log_level)
+        return self.collect_status(config)
+
     def build_home_context(self, *, message: str = "", level: str = "info") -> dict[str, object]:
         config = self.load_config()
         configure_logging(config.output.log_level)
-        status = self.collect_status(config)
+        status = self.build_status_placeholder(config)
         briefings = self.list_briefings(config)
         latest_briefing = briefings[0] if briefings else None
         today_text = date.today().isoformat()
         latest_is_today = latest_briefing is not None and latest_briefing.date_text == today_text
+        llm_configured = bool(status["llm"]["configured"])
 
         home_summary = {
             "headline": "今日日报已经成刊" if latest_is_today else "今天的日报还在整理中",
@@ -259,9 +355,9 @@ class DashboardBackend:
                 else "先看看账号状态，再生成今天的日报"
             ),
             "status_label": "已成刊" if latest_is_today else "整理中",
-            "service_summary": "公众号后台已经准备好了" if status["service"]["web_ok"] else "公众号后台正在准备",
-            "source_summary": "订阅已经可以读取" if status["source"]["ok"] else "先去后台看一下账号和订阅状态",
-            "llm_summary": "AI 模型已经就绪" if status["llm"]["configured"] else "需要摘要时再去设置里补上 AI 模型",
+            "service_summary": "正在确认公众号后台状态",
+            "source_summary": "正在确认订阅状态",
+            "llm_summary": "AI 模型已经就绪" if llm_configured else "需要摘要时再去设置里补上 AI 模型",
         }
 
         reminders = [
@@ -304,7 +400,7 @@ class DashboardBackend:
     def build_settings_context(self, *, message: str = "", level: str = "info") -> dict[str, object]:
         config = self.load_config()
         configure_logging(config.output.log_level)
-        status = self.collect_status(config)
+        status = self.build_status_placeholder(config)
         schedule_hour, schedule_minute = _split_daily_time(config.schedule.daily_time)
         return {
             "page_title": "设置",
@@ -330,9 +426,6 @@ class DashboardBackend:
     def collect_status(self, config: AppConfig) -> dict[str, object]:
         service_manager = BundledRSSServiceManager(config.rss_service)
         runtime = service_manager.status_snapshot()
-        article_fetcher = ArticleContentFetcher(config.article_fetch, config.rss)
-        http_ok, http_detail = article_fetcher.check_http_runtime()
-        browser_ok, browser_detail = article_fetcher.check_browser_runtime()
         schedule_installed, schedule_detail = get_schedule_status()
         source_ok, source_detail = self._check_source(config)
         llm_status = _build_llm_status(config)
@@ -349,10 +442,10 @@ class DashboardBackend:
                 "feed_url": runtime.feed_url,
             },
             "article_fetch": {
-                "http_ok": http_ok,
-                "http_detail": http_detail,
-                "browser_ok": browser_ok,
-                "browser_detail": browser_detail,
+                "http_ok": None,
+                "http_detail": "按需检查",
+                "browser_ok": None,
+                "browser_detail": "按需检查",
             },
             "llm": llm_status,
             "schedule": {
@@ -400,9 +493,9 @@ class DashboardBackend:
         config = self.load_config()
         return BundledRSSServiceManager(config.rss_service).restart()
 
-    def open_service_admin(self) -> str:
+    def open_service_admin(self, *, return_to: str = "") -> str:
         config = self.load_config()
-        return BundledRSSServiceManager(config.rss_service).open_admin()
+        return BundledRSSServiceManager(config.rss_service).open_admin(return_to=return_to)
 
     def open_output_dir(self) -> str:
         config = self.load_config()
@@ -419,12 +512,6 @@ class DashboardBackend:
         config.output.briefing_dir = _normalize_output_dir(selected)
         self.save_config(config)
         return True, "保存目录成功"
-
-    def save_output_dir(self, briefing_dir: str) -> str:
-        config = self.load_config()
-        config.output.briefing_dir = _normalize_output_dir(briefing_dir)
-        self.save_config(config)
-        return "保存目录成功"
 
     def save_service_settings(self, *, port: int) -> str:
         config = self.load_config()
@@ -463,13 +550,6 @@ class DashboardBackend:
             return True, f"AI 模型配置已保存，连通测试成功：{detail}"
         return False, f"AI 模型配置已保存，连通测试没有通过：{detail}"
 
-    def save_schedule(self, *, run_hour: int, run_minute: int, daily_article_limit: str) -> str:
-        config = self.load_config()
-        config.schedule.daily_time = _build_daily_time(run_hour, run_minute)
-        config.rss.daily_article_limit = normalize_daily_article_limit(daily_article_limit)
-        self.save_config(config)
-        return "自动运行设置已保存"
-
     def install_schedule(self, *, run_hour: int, run_minute: int, daily_article_limit: str) -> str:
         config = self.load_config()
         config.schedule.daily_time = _build_daily_time(run_hour, run_minute)
@@ -480,9 +560,39 @@ class DashboardBackend:
     def remove_schedule(self) -> str:
         return remove_schedule()
 
-    def run_now(self, target_date: date) -> tuple[bool, str]:
+    def run_now(
+        self,
+        target_date: date,
+        *,
+        progress_callback: Callable[[str, str], None] | None = None,
+    ) -> tuple[bool, str]:
         config = self.load_config()
         configure_logging(config.output.log_level)
+        service_manager = BundledRSSServiceManager(config.rss_service)
+
+        if progress_callback is not None:
+            progress_callback("正在检查账号", "正在核对账号状态和可用额度")
+
+        try:
+            service_manager.start()
+        except Exception as exc:
+            return False, f"刷新今日信息失败，请检查账号状态后重试❤️（{exc}）"
+
+        if progress_callback is not None:
+            progress_callback("正在刷新订阅", "正在更新今天需要整理的订阅内容")
+
+        try:
+            refresh_result = service_manager.refresh_all_feeds()
+        except Exception as exc:
+            return False, f"刷新今日信息失败，请检查账号状态后重试❤️（{exc}）"
+
+        if not refresh_result.completed:
+            detail = refresh_result.detail or refresh_result.reason or "当前没有可用账号，请稍后再试"
+            return False, f"刷新今日信息失败，请检查账号状态后重试❤️（{detail}）"
+
+        if progress_callback is not None:
+            progress_callback("正在整理日报", "正在把刷新后的内容整理成今天的日报")
+
         storage = Storage(config.db_path)
         service = ReaderService(
             config=config,
@@ -536,6 +646,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
 
     web = FastAPI(title="GZHReader GUI", lifespan=lifespan)
     web.state.backend = resolved_backend
+    web.state.run_jobs = RunJobStore()
     templates = _create_templates()
     web.state.templates = templates
     static_dir = _get_static_dir()
@@ -554,6 +665,71 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
     @web.get("/healthz")
     def healthz() -> JSONResponse:
         return JSONResponse({"ok": True})
+
+    @web.get("/api/status")
+    def api_status() -> JSONResponse:
+        backend_obj = web.state.backend
+        if hasattr(backend_obj, "get_status_payload"):
+            return JSONResponse(backend_obj.get_status_payload())
+        return JSONResponse(backend_obj.build_home_context()["status"])
+
+    @web.post("/api/run-jobs")
+    def create_run_job(target_date: str = Form(...)) -> JSONResponse:
+        parsed_date = date.fromisoformat(target_date)
+        job_store: RunJobStore = web.state.run_jobs
+        job = job_store.create(parsed_date)
+
+        def update_progress(stage: str, detail: str) -> None:
+            job_store.update(job.id, stage=stage, detail=detail)
+
+        def worker() -> None:
+            try:
+                try:
+                    ok, detail = web.state.backend.run_now(
+                        parsed_date,
+                        progress_callback=update_progress,
+                    )
+                except TypeError:
+                    ok, detail = web.state.backend.run_now(parsed_date)
+
+                job_store.update(
+                    job.id,
+                    status="done" if ok else "error",
+                    stage="已经完成" if ok else "已暂停",
+                    detail=detail,
+                    level="success" if ok else "warning",
+                    finished_at=time.time(),
+                )
+            except Exception as exc:
+                job_store.update(
+                    job.id,
+                    status="error",
+                    stage="已暂停",
+                    detail=f"生成日报失败：{exc}",
+                    level="error",
+                    finished_at=time.time(),
+                )
+
+        threading.Thread(target=worker, daemon=True).start()
+        return JSONResponse({"job_id": job.id})
+
+    @web.get("/api/run-jobs/{job_id}")
+    def get_run_job(job_id: str) -> JSONResponse:
+        job_store: RunJobStore = web.state.run_jobs
+        job = job_store.get(job_id)
+        if job is None:
+            return JSONResponse({"ok": False, "message": "没有找到这个任务"}, status_code=404)
+        return JSONResponse(
+            {
+                "ok": True,
+                "id": job.id,
+                "targetDate": job.target_date,
+                "status": job.status,
+                "stage": job.stage,
+                "detail": job.detail,
+                "level": job.level,
+            }
+        )
 
     @web.get("/favicon.ico")
     def favicon() -> Response:
@@ -598,9 +774,10 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
             return _redirect("/settings", f"重启服务失败：{exc}", "error")
 
     @web.post("/actions/service/open-admin")
-    def service_open_admin():
+    def service_open_admin(request: Request, return_to: str = Form("")):
         try:
-            detail = web.state.backend.open_service_admin()
+            fallback_return_to = return_to.strip() or request.headers.get("referer", "").strip()
+            detail = web.state.backend.open_service_admin(return_to=fallback_return_to)
             return _redirect("/", detail, "success")
         except Exception as exc:
             return _redirect("/", f"打开公众号后台失败：{exc}", "error")
@@ -629,14 +806,6 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
             retries=retries,
         )
         return _redirect("/settings", detail, "success" if ok else "warning")
-
-    @web.post("/actions/save-output-dir")
-    def save_output_dir(briefing_dir: str = Form(...)):
-        try:
-            detail = web.state.backend.save_output_dir(briefing_dir)
-            return _redirect("/settings", detail, "success")
-        except Exception as exc:
-            return _redirect("/settings", f"保存目录失败：{exc}", "error")
 
     @web.post("/actions/pick-output-dir")
     def pick_output_dir():
@@ -678,22 +847,6 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         except Exception as exc:
             return _redirect("/settings", f"移除自动运行失败：{exc}", "error")
 
-    @web.post("/actions/save-schedule")
-    def save_schedule_action(
-        run_hour: int = Form(...),
-        run_minute: int = Form(...),
-        daily_article_limit: str = Form(...),
-    ):
-        try:
-            detail = web.state.backend.save_schedule(
-                run_hour=run_hour,
-                run_minute=run_minute,
-                daily_article_limit=daily_article_limit,
-            )
-            return _redirect("/settings", detail, "success")
-        except Exception as exc:
-            return _redirect("/settings", f"保存自动运行设置失败：{exc}", "error")
-
     @web.post("/actions/run-now")
     def run_now(target_date: str = Form(...)):
         try:
@@ -713,8 +866,12 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
 
     @web.get("/briefings/latest")
     def latest_briefing():
-        context = web.state.backend.build_home_context()
-        briefings = context["recent_briefings"]
+        backend_obj = web.state.backend
+        if hasattr(backend_obj, "load_config") and hasattr(backend_obj, "list_briefings"):
+            config = backend_obj.load_config()
+            briefings = backend_obj.list_briefings(config)
+        else:
+            briefings = backend_obj.build_home_context()["recent_briefings"]
         if not briefings:
             return _redirect("/", "还没有生成过日报", "warning")
         latest = briefings[0]

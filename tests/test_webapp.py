@@ -22,9 +22,9 @@ class FakeBackend:
         self.stopped = False
         self.restarted = False
         self.opened_admin = False
+        self.admin_return_to: str | None = None
         self.saved_service: dict | None = None
         self.saved_llm: dict | None = None
-        self.saved_output_dir: str | None = None
         self.pick_output_dir_called = False
         self.open_output_dir_called = False
         self.saved_schedule_args: dict | None = None
@@ -108,15 +108,15 @@ class FakeBackend:
                 "button_label": "关于",
                 "dialog_id": "about-dialog",
                 "tagline": "把公众号阅读整理成更安静的本地工作台",
-                "motivation_title": "开发动机",
-                "motivation_text": "让每天的阅读更容易整理和回看",
+                "motivation_title": "💡 开发动机",
+                "motivation_text": "从公众号碎片化的推送中解放出来，比起被小红点牵着走，更希望把优质内容安静地收进本地、沉淀为日报，留给真正需要深度阅读的时刻",
                 "repo_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
-                "feedback_title": "反馈",
-                "feedback_text": "欢迎告诉我哪些地方还可以更顺手",
+                "feedback_title": "💬 问题反馈",
+                "feedback_text": "遇到账号配置、内容抓取、日报生成或交互体验上的问题，欢迎随时提 Issue！特别是那些让你觉得“多点了一步”、“等得太久”或“提示看不懂”的细节，都是接下来的优化方向",
                 "issues_url": "https://github.com/zhiwuyazhe-fjr/GZHReader/issues",
                 "feedback_label": "反馈问题",
-                "support_title": "支持项目",
-                "support_text": "如果它帮到了你，也欢迎分享给朋友",
+                "support_title": "❤️ 支持项目",
+                "support_text": "如果 GZHReader 帮你减少了信息噪音，让阅读整理更省心，请把它分享给有同样困扰的朋友。你的每一次安利，都是我持续把这个工具做稳、做精的最大底气😘",
                 "share_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
                 "support_label": "分享给朋友",
                 "author_title": "关于作者",
@@ -182,8 +182,9 @@ class FakeBackend:
         self.restarted = True
         return "restarted"
 
-    def open_service_admin(self) -> str:
+    def open_service_admin(self, *, return_to: str = "") -> str:
         self.opened_admin = True
+        self.admin_return_to = return_to
         return "opened admin"
 
     def save_service_settings(self, **kwargs) -> str:
@@ -194,10 +195,6 @@ class FakeBackend:
         self.saved_llm = kwargs
         return True, "llm saved"
 
-    def save_output_dir(self, briefing_dir: str):
-        self.saved_output_dir = briefing_dir
-        return "saved output dir"
-
     def pick_output_dir(self):
         self.pick_output_dir_called = True
         return True, "picked output dir"
@@ -205,10 +202,6 @@ class FakeBackend:
     def open_output_dir(self) -> str:
         self.open_output_dir_called = True
         return "opened output dir"
-
-    def save_schedule(self, **kwargs):
-        self.saved_schedule_args = kwargs
-        return "schedule saved"
 
     def install_schedule(self, **kwargs):
         self.saved_schedule_args = kwargs
@@ -257,11 +250,15 @@ def test_settings_page_renders_editorial_sections() -> None:
     assert "自动运行" in response.text
     assert "高级配置" in response.text
     assert "把服务与设置留在幕后" in response.text
+    assert "没有配置AI也可以生成纯整理版日报" in response.text
+    assert "启用自动运行" in response.text
     assert "保存输出目录" not in response.text
+    assert "安装自动运行" not in response.text
     assert "AUTH_CODE" not in response.text
     assert "跟随系统" in response.text
     assert "浅色" in response.text
     assert "深色" in response.text
+    assert 'data-open-admin-form' in response.text
     assert 'class="settings-disclosure"' in response.text
     assert 'data-theme-toggle' not in response.text
 
@@ -275,6 +272,22 @@ def test_service_start_redirects_and_calls_backend() -> None:
     assert response.status_code == 303
     assert backend.started is True
     assert response.headers["location"].startswith("/?message=")
+
+
+def test_open_admin_passes_return_to_to_backend() -> None:
+    backend = FakeBackend()
+    client = TestClient(create_app(backend=backend))
+
+    response = client.post(
+        "/actions/service/open-admin",
+        data={"return_to": "http://127.0.0.1:8765/settings"},
+        follow_redirects=False,
+        headers={"referer": "http://127.0.0.1:8765/settings"},
+    )
+
+    assert response.status_code == 303
+    assert backend.opened_admin is True
+    assert backend.admin_return_to == "http://127.0.0.1:8765/settings"
 
 
 def test_save_service_settings_passes_values_to_backend() -> None:
@@ -303,6 +316,56 @@ def test_run_now_quick_action_posts_today() -> None:
 
     assert response.status_code == 303
     assert backend.run_now_target == "2026-03-08"
+
+
+def test_status_api_returns_backend_status() -> None:
+    client = TestClient(create_app(backend=FakeBackend(service_ready=True, schedule_installed=True)))
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["service"]["web_ok"] is True
+    assert payload["schedule"]["installed"] is True
+
+
+def test_run_job_api_creates_background_job() -> None:
+    backend = FakeBackend()
+    client = TestClient(create_app(backend=backend))
+
+    create_response = client.post("/api/run-jobs", data={"target_date": "2026-03-08"})
+
+    assert create_response.status_code == 200
+    job_id = create_response.json()["job_id"]
+
+    status_response = client.get(f"/api/run-jobs/{job_id}")
+
+    assert status_response.status_code == 200
+    assert status_response.json()["ok"] is True
+
+
+def test_run_job_status_uses_human_readable_stage_copy() -> None:
+    class ProgressBackend(FakeBackend):
+        def run_now(self, target_date, progress_callback=None):
+            self.run_now_target = target_date.isoformat()
+            if progress_callback is not None:
+                progress_callback("正在检查账号", "正在核对账号状态和可用额度")
+                progress_callback("正在刷新订阅", "正在更新今天需要整理的订阅内容")
+                progress_callback("正在整理日报", "正在把刷新后的内容整理成今天的日报")
+            return True, "日报已经生成"
+
+    client = TestClient(create_app(backend=ProgressBackend()))
+
+    create_response = client.post("/api/run-jobs", data={"target_date": "2026-03-08"})
+    assert create_response.status_code == 200
+    job_id = create_response.json()["job_id"]
+
+    status_response = client.get(f"/api/run-jobs/{job_id}")
+    assert status_response.status_code == 200
+    payload = status_response.json()
+    assert payload["ok"] is True
+    assert payload["stage"] != "checking"
+    assert payload["stage"] in {"正在检查账号", "正在刷新订阅", "正在整理日报", "已经完成"}
 
 
 def test_briefing_page_renders_markdown_text() -> None:
@@ -419,10 +482,15 @@ def test_homepage_renders_about_trigger_and_dialog() -> None:
     assert "about-dialog" in response.text
     assert "data-open-dialog" in response.text
     assert "关于" in response.text
+    assert "💡 开发动机" in response.text
+    assert "💬 问题反馈" in response.text
+    assert "❤️ 支持项目" in response.text
     assert "反馈问题" in response.text
     assert "分享给朋友" in response.text
+    assert "仓库链接已复制" in response.text
     assert "GitHub主页" in response.text
     assert "小红书" in response.text
     assert "生成特定日期" in response.text
     assert "v2.0.0" in response.text
     assert "vv2.0.0" not in response.text
+    assert 'data-open-admin-form' in response.text

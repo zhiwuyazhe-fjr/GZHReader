@@ -9,11 +9,12 @@
         <div class="editorial-rule"></div>
         <div class="hero-lead">{{ home_summary.detail }}</div>
         <div class="action-row">
-          <form method="post" action="/actions/run-now">
+          <form method="post" action="/actions/run-now" data-run-job-form>
             <input type="hidden" name="target_date" value="{{ today }}">
             <button class="primary" type="submit">立即生成今天</button>
           </form>
-          <form method="post" action="/actions/service/open-admin">
+          <form method="post" action="/actions/service/open-admin" data-open-admin-form data-admin-url="{{ status.service.admin_url }}">
+            <input type="hidden" name="return_to" value="">
             <button class="secondary" type="submit">打开公众号后台</button>
           </form>
           <a class="button secondary" href="/settings">进入设置</a>
@@ -23,16 +24,21 @@
       <aside class="summary-card">
         <div class="summary-label">今日状态</div>
         <div class="summary-value">{{ home_summary.status_label }}</div>
-        <div class="summary-detail">{{ home_summary.service_summary }}<br>{{ home_summary.source_summary }}<br>{{ home_summary.llm_summary }}</div>
+        <div class="summary-detail">
+          <span id="home-service-summary">{{ home_summary.service_summary }}</span><br>
+          <span id="home-source-summary">{{ home_summary.source_summary }}</span><br>
+          <span id="home-llm-summary">{{ home_summary.llm_summary }}</span>
+          {% if not status.llm.configured %}<br><span id="home-llm-summary-extra">没有配置AI也可以生成纯整理版日报</span>{% endif %}
+        </div>
         <details class="detail-disclosure">
           <summary>
             <span class="summary-label">查看详情</span>
             <span class="detail-disclosure-toggle" data-closed-label="展开" data-open-label="收起" aria-hidden="true"></span>
           </summary>
           <div class="disclosure-body">
-            <div class="status-detail">聚合源：{{ status.source.detail }}</div>
-            <div class="status-detail">服务状态：{{ status.service.web_detail }}</div>
-            <div class="status-detail">AI 状态：{{ status.llm.detail }}</div>
+            <div class="status-detail" id="home-source-detail">聚合源：{{ status.source.detail }}</div>
+            <div class="status-detail" id="home-service-detail">服务状态：{{ status.service.web_detail }}</div>
+            <div class="status-detail" id="home-llm-detail">AI 状态：{{ status.llm.detail }}</div>
           </div>
         </details>
       </aside>
@@ -72,45 +78,48 @@
       <div class="status-list">
         <div class="status-item">
           <strong>公众号后台</strong>
-          <span class="status-pill {{ 'ok' if status.service.web_ok else 'warn' }}">{{ '已就绪' if status.service.web_ok else '准备中' }}</span>
-          <div class="status-detail">{{ home_summary.service_summary }}</div>
+          <span id="home-service-pill" class="status-pill warn">正在检查</span>
+          <div id="home-service-card-detail" class="status-detail">{{ home_summary.service_summary }}</div>
           <details class="detail-disclosure">
             <summary>
               <span class="summary-label">查看详情</span>
               <span class="detail-disclosure-toggle" data-closed-label="展开" data-open-label="收起" aria-hidden="true"></span>
             </summary>
             <div class="disclosure-body">
-              <div class="status-detail">{{ status.service.runtime_detail }}</div>
-              <div class="status-detail">{{ status.service.process_detail }}</div>
-              <div class="status-detail">{{ status.service.web_detail }}</div>
+              <div class="status-detail" id="home-service-runtime-detail">{{ status.service.runtime_detail }}</div>
+              <div class="status-detail" id="home-service-process-detail">{{ status.service.process_detail }}</div>
+              <div class="status-detail" id="home-service-web-detail">{{ status.service.web_detail }}</div>
             </div>
           </details>
         </div>
         <div class="status-item">
           <strong>AI 模型</strong>
           <span class="status-pill {{ 'ok' if status.llm.configured else 'warn' }}">{{ '已配置' if status.llm.configured else '待配置' }}</span>
-          <div class="status-detail">{{ home_summary.llm_summary }}</div>
+          <div class="status-detail">
+            <span id="home-ai-card-detail">{{ home_summary.llm_summary }}</span>
+            {% if not status.llm.configured %}<br><span id="home-ai-card-extra">没有配置AI也可以生成纯整理版日报</span>{% endif %}
+          </div>
           <details class="detail-disclosure">
             <summary>
               <span class="summary-label">查看详情</span>
               <span class="detail-disclosure-toggle" data-closed-label="展开" data-open-label="收起" aria-hidden="true"></span>
             </summary>
             <div class="disclosure-body">
-              <div class="status-detail">{{ status.llm.detail }}</div>
+              <div class="status-detail" id="home-ai-detail">{{ status.llm.detail }}</div>
             </div>
           </details>
         </div>
         <div class="status-item">
           <strong>自动运行</strong>
-          <span class="status-pill {{ 'ok' if status.schedule.installed else 'warn' }}">{{ '已开启' if status.schedule.installed else '未开启' }}</span>
-          <div class="status-detail">{{ status.schedule.detail }}</div>
+          <span id="home-schedule-pill" class="status-pill warn">正在检查</span>
+          <div id="home-schedule-detail" class="status-detail">{{ status.schedule.detail }}</div>
           <details class="detail-disclosure">
             <summary>
               <span class="summary-label">查看详情</span>
               <span class="detail-disclosure-toggle" data-closed-label="展开" data-open-label="收起" aria-hidden="true"></span>
             </summary>
             <div class="disclosure-body">
-              <div class="status-detail">{{ status.schedule.daily_limit_label }}</div>
+              <div id="home-schedule-limit" class="status-detail">{{ status.schedule.daily_limit_label }}</div>
               <div class="status-detail">{{ settings_snapshot.output_dir }}</div>
             </div>
           </details>
@@ -145,7 +154,7 @@
         </div>
         <form method="dialog"><button class="button secondary" type="submit">关闭</button></form>
       </div>
-      <form method="post" action="/actions/run-now" class="settings-grid">
+      <form method="post" action="/actions/run-now" class="settings-grid" data-run-job-form>
         <div class="field">
           <label>日期</label>
           <input type="date" name="target_date" value="{{ today }}">
@@ -156,4 +165,147 @@
       </form>
     </div>
   </dialog>
+
+  <dialog id="run-progress-dialog" class="about-dialog" data-locked-dialog="true">
+    <div class="about-dialog-card run-progress-card">
+      <div class="run-progress-spinner" aria-hidden="true"></div>
+      <div class="about-dialog-brand-copy">
+        <div id="run-progress-stage" class="about-dialog-title">正在检查账号</div>
+        <div id="run-progress-detail" class="about-dialog-copy">正在刷新并生成日报，可能需要几分钟，请耐心等待</div>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    (() => {
+      const setText = (id, value) => {
+        const node = document.getElementById(id);
+        if (node && typeof value === 'string') node.textContent = value;
+      };
+      const setPill = (id, label, tone) => {
+        const node = document.getElementById(id);
+        if (!node) return;
+        node.textContent = label;
+        node.classList.remove('ok', 'warn', 'bad');
+        node.classList.add(tone);
+      };
+      const applyStatus = (payload) => {
+        if (!payload) return;
+        setText('home-service-summary', payload.service.webOk ? '公众号后台已经准备好了' : '公众号后台还没有准备好');
+        setText('home-source-summary', payload.source.ok ? '订阅已经可以读取' : '先去后台看一下账号和订阅状态');
+        setText('home-llm-summary', payload.llm.configured ? 'AI 模型已经就绪' : '需要摘要时再去设置里补上 AI 模型');
+        setText('home-source-detail', `聚合源：${payload.source.detail}`);
+        setText('home-service-detail', `服务状态：${payload.service.webDetail}`);
+        setText('home-llm-detail', `AI 状态：${payload.llm.detail}`);
+
+        setPill('home-service-pill', payload.service.webOk ? '已就绪' : '待处理', payload.service.webOk ? 'ok' : 'warn');
+        setText('home-service-card-detail', payload.service.webOk ? '公众号后台已经准备好了' : '公众号后台还没有准备好');
+        setText('home-service-runtime-detail', payload.service.runtimeDetail);
+        setText('home-service-process-detail', payload.service.processDetail);
+        setText('home-service-web-detail', payload.service.webDetail);
+
+        setText('home-ai-card-detail', payload.llm.configured ? 'AI 模型已经就绪' : '需要摘要时再去设置里补上 AI 模型');
+
+        setPill('home-schedule-pill', payload.schedule.installed ? '已开启' : '未开启', payload.schedule.installed ? 'ok' : 'warn');
+        setText('home-schedule-detail', payload.schedule.detail);
+        setText('home-schedule-limit', payload.schedule.dailyLimitLabel);
+      };
+
+      window.fetch('/api/status')
+        .then((response) => response.ok ? response.json() : null)
+        .then((payload) => {
+          if (!payload) return;
+          applyStatus({
+            service: {
+              webOk: payload.service.web_ok,
+              webDetail: payload.service.web_detail,
+              runtimeDetail: payload.service.runtime_detail,
+              processDetail: payload.service.process_detail,
+            },
+            source: {
+              ok: payload.source.ok,
+              detail: payload.source.detail,
+            },
+            llm: {
+              configured: payload.llm.configured,
+              detail: payload.llm.detail,
+            },
+            schedule: {
+              installed: payload.schedule.installed,
+              detail: payload.schedule.detail,
+              dailyLimitLabel: payload.schedule.daily_limit_label,
+            },
+          });
+        })
+        .catch(() => {});
+
+      const progressDialog = document.getElementById('run-progress-dialog');
+      const progressStage = document.getElementById('run-progress-stage');
+      const progressDetail = document.getElementById('run-progress-detail');
+
+      const openProgress = (stage, detail) => {
+        if (!progressDialog) return;
+        if (progressStage) progressStage.textContent = stage;
+        if (progressDetail) progressDetail.textContent = detail;
+        if (typeof progressDialog.showModal === 'function') progressDialog.showModal();
+        else progressDialog.setAttribute('open', 'open');
+      };
+      const closeProgress = () => {
+        if (!progressDialog) return;
+        if (typeof progressDialog.close === 'function') progressDialog.close();
+        else progressDialog.removeAttribute('open');
+      };
+
+      document.querySelectorAll('[data-run-job-form]').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const formData = new FormData(form);
+          const parentDialog = form.closest('dialog');
+          if (parentDialog && parentDialog.id !== 'run-progress-dialog') {
+            if (typeof parentDialog.close === 'function') parentDialog.close();
+            else parentDialog.removeAttribute('open');
+          }
+          openProgress('正在检查账号', '正在刷新并生成日报，可能需要几分钟，请耐心等待');
+          try {
+            const response = await window.fetch('/api/run-jobs', { method: 'POST', body: formData });
+            const payload = await response.json();
+            if (!response.ok || !payload.job_id) {
+              throw new Error(payload.message || '任务没有成功创建');
+            }
+            const poll = window.setInterval(async () => {
+              try {
+                const statusResponse = await window.fetch(`/api/run-jobs/${payload.job_id}`);
+                const statusPayload = await statusResponse.json();
+                if (!statusResponse.ok || !statusPayload.ok) {
+                  throw new Error(statusPayload.message || '任务状态读取失败');
+                }
+                if (progressStage) progressStage.textContent = statusPayload.stage;
+                if (progressDetail) progressDetail.textContent = statusPayload.detail || '正在刷新并生成日报，可能需要几分钟，请耐心等待';
+                if (statusPayload.status === 'done') {
+                  window.clearInterval(poll);
+                  closeProgress();
+                  const nextUrl = new URL('/', window.location.origin);
+                  nextUrl.searchParams.set('message', statusPayload.detail || '日报已经生成');
+                  nextUrl.searchParams.set('level', 'success');
+                  window.location.assign(nextUrl.toString());
+                }
+                if (statusPayload.status === 'error') {
+                  window.clearInterval(poll);
+                  closeProgress();
+                  window.GZHReaderUI?.showToast?.(statusPayload.detail || '生成日报失败', statusPayload.level || 'error');
+                }
+              } catch (error) {
+                window.clearInterval(poll);
+                closeProgress();
+                window.GZHReaderUI?.showToast?.(error instanceof Error ? error.message : '生成日报失败', 'error');
+              }
+            }, 1200);
+          } catch (error) {
+            closeProgress();
+            window.GZHReaderUI?.showToast?.(error instanceof Error ? error.message : '生成日报失败', 'error');
+          }
+        });
+      });
+    })();
+  </script>
 {% endblock %}

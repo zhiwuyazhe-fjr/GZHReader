@@ -229,15 +229,7 @@ export class TrpcRouter {
       )
       .mutation(async ({ input: { mpId } }) => {
         if (mpId) {
-          const result = await this.trpcService.refreshMpArticlesAndUpdateFeed(mpId);
-          return {
-            completed: true,
-            refreshedCount: 1,
-            totalCount: 1,
-            budgetRemaining: (await this.trpcService.getDailyUsageSummary()).remaining,
-            reason: '',
-            ...result,
-          };
+          return this.trpcService.refreshSingleMpArticlesAndUpdateFeed(mpId);
         }
         return this.trpcService.refreshAllMpArticlesAndUpdateFeed();
       }),
@@ -267,14 +259,15 @@ export class TrpcRouter {
     list: this.trpcService.protectedProcedure
       .input(
         z.object({
-          limit: z.number().min(1).max(1000).nullish(),
-          cursor: z.string().nullish(),
+          page: z.number().min(1).default(1),
+          pageSize: z.number().min(1).max(100).default(12),
           mpId: z.string().nullish(),
         }),
       )
       .query(async ({ input }) => {
-        const limit = input.limit ?? 1000;
-        const { cursor, mpId } = input;
+        const { page, pageSize, mpId } = input;
+        const where = mpId ? { mpId } : undefined;
+        const totalCount = await this.prismaService.article.count({ where });
 
         const items = await this.prismaService.article.findMany({
           orderBy: [
@@ -282,26 +275,17 @@ export class TrpcRouter {
               publishTime: 'desc',
             },
           ],
-          take: limit + 1,
-          where: mpId ? { mpId } : undefined,
-          cursor: cursor
-            ? {
-                id: cursor,
-              }
-            : undefined,
+          take: pageSize,
+          skip: (page - 1) * pageSize,
+          where,
         });
-        let nextCursor: typeof cursor | undefined = undefined;
-        if (items.length > limit) {
-          // Remove the last item and use it as next cursor
-
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-          const nextItem = items.pop()!;
-          nextCursor = nextItem.id;
-        }
 
         return {
           items,
-          nextCursor,
+          totalCount,
+          page,
+          pageSize,
+          pageCount: Math.max(Math.ceil(totalCount / pageSize), 1),
         };
       }),
     byId: this.trpcService.protectedProcedure

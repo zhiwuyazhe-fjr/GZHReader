@@ -7,6 +7,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
@@ -25,6 +26,17 @@ class RSSServiceRuntimeStatus:
     web_detail: str
     admin_url: str
     feed_url: str
+
+
+@dataclass(slots=True)
+class RSSRefreshResult:
+    completed: bool
+    refreshed_count: int
+    total_count: int
+    budget_remaining: int | None
+    reason_code: str
+    reason: str
+    detail: str
 
 
 class BundledRSSServiceManager:
@@ -170,9 +182,48 @@ class BundledRSSServiceManager:
         snippet = lines[-tail:]
         return "\n".join(snippet) if snippet else "暂无服务日志。"
 
-    def open_admin(self) -> str:
-        open_web_url(self.admin_url)
-        return f"已尝试打开 {self.admin_url}"
+    def open_admin(self, *, return_to: str = "") -> str:
+        target_url = self.admin_url
+        if return_to.strip():
+            parsed = urlsplit(target_url)
+            query_items = dict(parse_qsl(parsed.query, keep_blank_values=True))
+            query_items["return_to"] = return_to.strip()
+            target_url = urlunsplit(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    parsed.path,
+                    urlencode(query_items),
+                    parsed.fragment,
+                )
+            )
+        open_web_url(target_url)
+        return f"已尝试打开 {target_url}"
+
+    def refresh_all_feeds(self) -> RSSRefreshResult:
+        try:
+            response = httpx.post(
+                f"{self.config.base_url.rstrip('/')}/internal/refresh-all",
+                timeout=None,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as exc:
+            raise RuntimeError(f"本地公众号后台暂时无法完成刷新：{exc}") from exc
+
+        return RSSRefreshResult(
+            completed=bool(payload.get("completed")),
+            refreshed_count=int(payload.get("refreshedCount") or 0),
+            total_count=int(payload.get("totalCount") or 0),
+            budget_remaining=(
+                int(payload["budgetRemaining"])
+                if payload.get("budgetRemaining") is not None
+                else None
+            ),
+            reason_code=str(payload.get("reasonCode") or ""),
+            reason=str(payload.get("reason") or ""),
+            detail=str(payload.get("detail") or ""),
+        )
 
     def _build_runtime_env(self) -> dict[str, str]:
         db_path = Path(self.config.data_dir).expanduser().resolve() / "wewe-rss.db"

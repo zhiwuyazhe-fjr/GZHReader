@@ -1,28 +1,64 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { useParams } from 'react-router-dom';
 import { trpc } from '@web/utils/trpc';
 
+type PageToken = number | 'gap-left' | 'gap-right';
+
+const buildPageTokens = (currentPage: number, pageCount: number): PageToken[] => {
+  if (pageCount <= 7) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+
+  const tokens: PageToken[] = [1];
+  const windowStart = Math.max(2, currentPage - 1);
+  const windowEnd = Math.min(pageCount - 1, currentPage + 1);
+
+  if (windowStart > 2) {
+    tokens.push('gap-left');
+  }
+
+  for (let page = windowStart; page <= windowEnd; page += 1) {
+    tokens.push(page);
+  }
+
+  if (windowEnd < pageCount - 1) {
+    tokens.push('gap-right');
+  }
+
+  tokens.push(pageCount);
+  return tokens;
+};
+
 const ArticleList = () => {
   const { id } = useParams();
   const mpId = id || '';
-  const { data, fetchNextPage, isLoading, hasNextPage, isFetchingNextPage } =
-    trpc.article.list.useInfiniteQuery(
-      {
-        limit: 20,
-        mpId,
-      },
-      {
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-      },
-    );
+  const [page, setPage] = useState(1);
+  const pageSize = 12;
 
-  const items = useMemo(() => {
-    if (!data) {
-      return [] as any[];
-    }
-    return data.pages.flatMap((page) => page.items);
-  }, [data]);
+  useEffect(() => {
+    setPage(1);
+  }, [mpId]);
+
+  const { data, isLoading, isFetching } = trpc.article.list.useQuery(
+    {
+      page,
+      pageSize,
+      mpId,
+    },
+    {
+      keepPreviousData: true,
+      refetchOnWindowFocus: true,
+    },
+  );
+
+  const items = data?.items || [];
+  const currentPage = data?.page || page;
+  const pageCount = data?.pageCount || 1;
+  const pageTokens = useMemo(
+    () => buildPageTokens(currentPage, pageCount),
+    [currentPage, pageCount],
+  );
 
   return (
     <div className="rss-table-shell">
@@ -56,15 +92,44 @@ const ArticleList = () => {
         )}
       </div>
 
-      {hasNextPage && (
-        <div className="rss-actions">
+      {pageCount > 1 && (
+        <div className="rss-pagination">
           <button
             type="button"
             className="rss-button is-secondary"
-            disabled={isFetchingNextPage}
-            onClick={() => fetchNextPage()}
+            disabled={currentPage <= 1 || isFetching}
+            onClick={() => setPage((value) => Math.max(value - 1, 1))}
           >
-            {isFetchingNextPage ? '继续加载中' : '加载更多'}
+            上一页
+          </button>
+          <div className="rss-pagination-pages">
+            {pageTokens.map((token, index) =>
+              typeof token === 'number' ? (
+                <button
+                  key={token}
+                  type="button"
+                  className={`rss-page-pill${
+                    token === currentPage ? ' is-active' : ''
+                  }`}
+                  disabled={isFetching}
+                  onClick={() => setPage(token)}
+                >
+                  {token}
+                </button>
+              ) : (
+                <span key={`${token}-${index}`} className="rss-page-gap" aria-hidden="true">
+                  …
+                </span>
+              ),
+            )}
+          </div>
+          <button
+            type="button"
+            className="rss-button is-secondary"
+            disabled={currentPage >= pageCount || isFetching}
+            onClick={() => setPage((value) => Math.min(value + 1, pageCount))}
+          >
+            下一页
           </button>
         </div>
       )}
