@@ -160,24 +160,6 @@ class RSSServiceConfig(StrictBaseModel):
             raise ValueError("log_file must not be empty")
         return self
 
-
-class WeWeRSSConfig(StrictBaseModel):
-    enabled: bool = True
-    base_url: str = "http://localhost:4000"
-    auth_code: str = "123567"
-    service_dir: str = "./infra/wewe-rss"
-    compose_variant: Literal["sqlite", "mysql"] = "mysql"
-    port: int = 4000
-    server_origin_url: str = "http://localhost:4000"
-    image: str = "cooderl/wewe-rss:latest"
-
-    @model_validator(mode="after")
-    def _validate_model(self) -> "WeWeRSSConfig":
-        if self.port <= 0:
-            raise ValueError("port must be positive")
-        return self
-
-
 class ArticleFetchConfig(StrictBaseModel):
     enabled: bool = True
     trigger: Literal["missing_rss_content"] = "missing_rss_content"
@@ -312,10 +294,6 @@ class AppConfig(StrictBaseModel):
             self.source.url = build_default_source_url(self.rss_service.base_url)
         return self
 
-    @property
-    def wewe_rss(self) -> RSSServiceConfig:
-        return self.rss_service
-
     def runtime_feed(self) -> FeedConfig:
         return FeedConfig(
             name="全部公众号",
@@ -364,6 +342,16 @@ def load_config(path: Path) -> AppConfig:
 
 def migrate_config_file(path: Path) -> tuple[AppConfig, bool, Path | None]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if _needs_legacy_reset(data):
+        config = _reset_legacy_config(data)
+        _apply_runtime_path_migration(config)
+        backup_path = Path(f"{path}.legacy-reset.bak")
+        if backup_path.exists():
+            backup_path.unlink()
+        shutil.move(path, backup_path)
+        save_config(config, path)
+        return config, True, backup_path
+
     config = AppConfig.model_validate(data)
     runtime_changed = _apply_runtime_path_migration(config)
 
@@ -397,6 +385,119 @@ def _needs_file_migration(data: Any) -> bool:
             "wewe_rss",
         )
     ) or "source" not in data or "rss_service" not in data or _output_needs_migration(data) or _rss_needs_migration(data) or _rss_service_needs_migration(data)
+
+
+def _needs_legacy_reset(data: Any) -> bool:
+    if not isinstance(data, dict):
+        return False
+
+    if isinstance(data.get("wewe_rss"), dict):
+        return True
+
+    source = data.get("source")
+    if isinstance(source, dict):
+        source_url = str(source.get("url") or "").strip().lower()
+        if source_url.startswith("http://localhost:"):
+            return True
+
+    rss_service = data.get("rss_service")
+    if isinstance(rss_service, dict):
+        auth_code = str(rss_service.get("auth_code") or "").strip()
+        base_url = str(rss_service.get("base_url") or "").strip().lower()
+        data_dir = str(rss_service.get("data_dir") or "").replace("\\", "/").strip().lower()
+        if auth_code:
+            return True
+        if base_url.startswith("http://localhost:"):
+            return True
+        if "infra/wewe-rss" in data_dir:
+            return True
+
+    return False
+
+
+def _reset_legacy_config(data: Any) -> AppConfig:
+    config = default_config()
+    if not isinstance(data, dict):
+        return config
+
+    schedule = data.get("schedule")
+    if isinstance(schedule, dict):
+        config.schedule = ScheduleConfig.model_validate(schedule)
+
+    rss = data.get("rss")
+    if isinstance(rss, dict):
+        updated_rss = dict(rss)
+        if "daily_article_limit" not in updated_rss and "max_articles_per_feed" in updated_rss:
+            updated_rss["daily_article_limit"] = updated_rss.get("max_articles_per_feed")
+            updated_rss.pop("max_articles_per_feed", None)
+        config.rss = RSSConfig.model_validate(updated_rss)
+
+    article_fetch = data.get("article_fetch")
+    if isinstance(article_fetch, dict):
+        config.article_fetch = ArticleFetchConfig.model_validate(article_fetch)
+
+    llm = data.get("llm")
+    if isinstance(llm, dict):
+        config.llm = LLMConfig.model_validate(llm)
+
+    output = data.get("output")
+    if isinstance(output, dict):
+        updated_output = dict(output)
+        if "raw_archive_dir" not in updated_output and "html_archive_dir" in updated_output:
+            updated_output["raw_archive_dir"] = updated_output.get("html_archive_dir")
+            updated_output.pop("html_archive_dir", None)
+        config.output = OutputConfig.model_validate(updated_output)
+
+    port = _resolve_legacy_rss_port(data)
+    config.rss_service = RSSServiceConfig(
+        mode="bundled_wewe_rss",
+        base_url=f"http://127.0.0.1:{port}",
+        auth_code="",
+        port=port,
+        host="127.0.0.1",
+        data_dir=config.rss_service.data_dir,
+        log_file=config.rss_service.log_file,
+    )
+    config.source = SourceConfig(
+        mode="aggregate",
+        url=build_default_source_url(config.rss_service.base_url),
+    )
+    return config
+
+
+def _resolve_legacy_rss_port(data: dict[str, Any]) -> int:
+    candidates: list[Any] = []
+    rss_service = data.get("rss_service")
+    if isinstance(rss_service, dict):
+        candidates.append(rss_service.get("port"))
+        candidates.append(rss_service.get("base_url"))
+
+    legacy_wewe_rss = data.get("wewe_rss")
+    if isinstance(legacy_wewe_rss, dict):
+        candidates.append(legacy_wewe_rss.get("port"))
+        candidates.append(legacy_wewe_rss.get("base_url"))
+
+    source = data.get("source")
+    if isinstance(source, dict):
+        candidates.append(source.get("url"))
+
+    for candidate in candidates:
+        if isinstance(candidate, int) and candidate > 0:
+            return candidate
+        if isinstance(candidate, str):
+            value = candidate.strip()
+            if value.isdigit():
+                port = int(value)
+                if port > 0:
+                    return port
+            if value:
+                try:
+                    parsed = urlparse(value)
+                except ValueError:
+                    continue
+                if parsed.port and parsed.port > 0:
+                    return parsed.port
+    return 4000
 
 
 def _output_needs_migration(data: dict[str, Any]) -> bool:

@@ -37,6 +37,15 @@ def test_default_config_uses_runtime_paths(monkeypatch, tmp_path) -> None:
     assert cfg.output.raw_archive_dir == str(runtime_paths.raw_archive_dir)
 
 
+def test_dev_runtime_paths_use_build_runtime_dir(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(runtime_paths_module, "is_frozen_app", lambda: False)
+    monkeypatch.setattr(runtime_paths_module, "get_repo_root", lambda: tmp_path)
+
+    paths = runtime_paths_module.get_runtime_paths()
+
+    assert paths.bundled_wewe_rss_runtime_dir == tmp_path / "build" / "wewe-rss-runtime"
+
+
 def test_ensure_config_migrates_legacy_relative_paths_in_frozen_mode(monkeypatch, tmp_path) -> None:
     runtime_paths = _runtime_paths(tmp_path)
     runtime_paths = RuntimePaths(
@@ -82,7 +91,7 @@ output:
     assert cfg.rss_service.log_file == str(runtime_paths.rss_service_log_path)
     assert cfg.output.briefing_dir == str(runtime_paths.output_dir)
     assert cfg.output.raw_archive_dir == str(runtime_paths.raw_archive_dir)
-    assert (tmp_path / "config.yaml.bak").exists()
+    assert (tmp_path / "config.yaml.legacy-reset.bak").exists()
 
 
 def test_build_schedule_command_uses_python_module_in_dev(monkeypatch, tmp_path) -> None:

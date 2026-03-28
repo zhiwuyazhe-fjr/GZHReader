@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from gzhreader.config import RSSServiceConfig
+import gzhreader.rss_service as rss_service_module
 from gzhreader.rss_service import BundledRSSServiceManager
 from gzhreader.runtime_paths import RuntimePaths
 
@@ -65,3 +66,44 @@ def test_bundled_rss_manager_disables_auth_code_in_runtime_env(tmp_path) -> None
     env = manager._build_runtime_env()
 
     assert env["AUTH_CODE"] == ""
+
+
+def test_bundled_rss_manager_prefers_sqlite_migration_directory(tmp_path) -> None:
+    runtime_paths = _runtime_paths(tmp_path)
+    sqlite_migrations = runtime_paths.bundled_wewe_rss_runtime_dir / "apps" / "server" / "prisma-sqlite" / "migrations"
+    mysql_migrations = runtime_paths.bundled_wewe_rss_runtime_dir / "apps" / "server" / "prisma" / "migrations"
+    sqlite_migrations.mkdir(parents=True, exist_ok=True)
+    mysql_migrations.mkdir(parents=True, exist_ok=True)
+
+    manager = BundledRSSServiceManager(
+        RSSServiceConfig(
+            data_dir=str(tmp_path / "data"),
+            log_file=str(runtime_paths.rss_service_log_path),
+        ),
+        runtime_paths=runtime_paths,
+    )
+
+    resolved = manager._resolve_sqlite_migrations_root(runtime_paths.bundled_wewe_rss_runtime_dir)
+
+    assert resolved == sqlite_migrations
+
+
+def test_bundled_rss_manager_prefers_source_runtime_in_dev(monkeypatch, tmp_path) -> None:
+    runtime_paths = _runtime_paths(tmp_path)
+    source_entry = runtime_paths.bundled_wewe_rss_source_dir / "apps" / "server" / "dist"
+    source_entry.mkdir(parents=True, exist_ok=True)
+    (source_entry / "main.js").write_text("console.log('ok')", encoding="utf-8")
+    packaged_entry = runtime_paths.bundled_wewe_rss_runtime_dir / "apps" / "server" / "dist"
+    packaged_entry.mkdir(parents=True, exist_ok=True)
+    (packaged_entry / "main.js").write_text("console.log('ok')", encoding="utf-8")
+
+    monkeypatch.setattr(rss_service_module, "is_frozen_app", lambda: False)
+    manager = BundledRSSServiceManager(
+        RSSServiceConfig(
+            data_dir=str(tmp_path / "data"),
+            log_file=str(runtime_paths.rss_service_log_path),
+        ),
+        runtime_paths=runtime_paths,
+    )
+
+    assert manager._resolve_runtime_root() == runtime_paths.bundled_wewe_rss_source_dir

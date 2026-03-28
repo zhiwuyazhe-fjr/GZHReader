@@ -28,7 +28,7 @@ const ArticleList = () => {
     <div className="rss-table-shell">
       <div className="rss-table">
         <div className="rss-table-row rss-table-head">
-          <div>标题</div>
+          <div>文章标题</div>
           <div>发布时间</div>
         </div>
         {isLoading ? (

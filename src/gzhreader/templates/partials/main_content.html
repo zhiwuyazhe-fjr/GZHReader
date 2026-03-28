@@ -1,7 +1,0 @@
-{% if docker_blocked %}
-  {% include "partials/docker_setup.html" %}
-{% else %}
-  <div id="wizard-shell">{% include "partials/wizard.html" %}</div>
-  <div id="briefings-section">{% include "partials/briefings.html" %}</div>
-  <div id="advanced-shell">{% include "partials/advanced.html" %}</div>
-{% endif %}

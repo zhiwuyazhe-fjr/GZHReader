@@ -1,7 +1,7 @@
 import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { healthToneClassMap } from '@web/constants';
 import { StatusDropdown } from '@web/components/StatusDropdown';
 import { trpc } from '@web/utils/trpc';
@@ -69,6 +69,20 @@ const AccountPage = () => {
     return () => window.clearTimeout(timer);
   }, [countdown, isModalOpen]);
 
+  const items = data?.items || [];
+  const availableCount = useMemo(
+    () => items.filter((item: any) => item.healthLabel === '可用').length,
+    [items],
+  );
+  const cooldownCount = useMemo(
+    () => items.filter((item: any) => item.healthLabel === '冷却中').length,
+    [items],
+  );
+  const reloginCount = useMemo(
+    () => items.filter((item: any) => item.healthLabel === '待重登').length,
+    [items],
+  );
+
   const openLoginModal = async () => {
     setIsModalOpen(true);
     await createLoginUrl();
@@ -82,13 +96,14 @@ const AccountPage = () => {
 
   return (
     <>
-      <section className="rss-panel-hero">
+      <section className="rss-panel-hero rss-hero-grid">
         <div className="rss-hero-copy">
           <div className="rss-eyebrow">账号池</div>
-          <h1 className="rss-title">用更稳的账号池来承接每日刷新</h1>
+          <h1 className="rss-title">用更稳的账号池承接每天的刷新预算</h1>
           <div className="rss-rule" />
           <p className="rss-copy">
-            这里不再只告诉你账号是否存在，而是直接展示每个账号的真实健康状态、冷却原因和恢复入口
+            这里不再只告诉你账号是不是存在，而是直接展示每个账号的真实健康状态、冷却原因和恢复入口。
+            单次 401 不会再被立即误判成失效，整体调度也会优先保护可用额度。
           </p>
           <div className="rss-actions">
             <button
@@ -103,12 +118,25 @@ const AccountPage = () => {
             </a>
           </div>
         </div>
-        <div className="rss-note">
-          <strong>使用提醒</strong>
-          <br />
-          登录微信读书时不要勾选“24 小时后自动退出”。新的调度逻辑会优先保护额度，单次
-          401 不会再直接把账号判死
-        </div>
+        <aside className="rss-hero-side">
+          <div className="rss-stat-item">
+            <div className="rss-stat-label">可用账号</div>
+            <div className="rss-stat-value">{availableCount}</div>
+          </div>
+          <div className="rss-stat-item">
+            <div className="rss-stat-label">冷却中</div>
+            <div className="rss-stat-copy">{cooldownCount} 个</div>
+          </div>
+          <div className="rss-stat-item">
+            <div className="rss-stat-label">待重登</div>
+            <div className="rss-stat-copy">{reloginCount} 个</div>
+          </div>
+          <div className="rss-note">
+            <strong>使用提醒</strong>
+            <br />
+            登录微信读书时不要勾选“24 小时后自动退出”。新调度会先冷却、再判断是否需要重登。
+          </div>
+        </aside>
       </section>
 
       <section className="rss-panel">
@@ -116,25 +144,25 @@ const AccountPage = () => {
           <div>
             <h2 className="rss-panel-title">账号列表</h2>
             <p className="rss-panel-copy">
-              可用、冷却中、待重登和禁用会直接显示在一行里，方便你判断下一步是继续刷新还是重新扫码
+              可用、冷却中、待重登和禁用都会直接显示在一行里，方便判断下一步是继续刷新还是重新扫码。
             </p>
           </div>
           <div className="rss-meta">
             <span>
-              共 <strong>{data?.items.length || 0}</strong> 个账号
+              共 <strong>{items.length || 0}</strong> 个账号
             </span>
-            <span>{isFetching ? '列表刷新中' : '状态已更新'}</span>
+            <span>{isFetching ? '列表刷新中' : '状态已同步'}</span>
           </div>
         </div>
 
         <div className="rss-stack">
-          {(data?.items || []).length === 0 ? (
+          {!items.length ? (
             <div className="rss-empty">
-              还没有接入任何读书账号。点击上面的“添加读书账号”，扫码后就能开始刷新订阅和拉取聚合源
+              还没有接入任何读书账号。点上面的“添加读书账号”，扫码后就能开始为订阅刷新提供额度。
             </div>
           ) : (
-            (data?.items || []).map((item: any) => (
-              <article key={item.id} className="rss-panel">
+            items.map((item: any) => (
+              <article key={item.id} className="rss-panel rss-account-card">
                 <div className="rss-panel-header">
                   <div>
                     <h3 className="rss-panel-title">{item.name}</h3>
@@ -224,7 +252,7 @@ const AccountPage = () => {
                 <div className="rss-eyebrow">扫码恢复</div>
                 <h2 className="rss-modal-title">添加或恢复读书账号</h2>
                 <p className="rss-panel-copy">
-                  扫码成功后，账号会立即加入额度调度。新的逻辑会把短暂异常先放入冷却，而不是马上判成失效
+                  扫码成功后，账号会立刻加入调度。新的调度策略会把短暂异常先放进冷却，而不是马上判成失效。
                 </p>
               </div>
               <button
@@ -248,7 +276,7 @@ const AccountPage = () => {
                   <div className="rss-note">
                     微信扫码登录
                     {!loginResult?.message && countdown > 0
-                      ? `（${countdown}s）`
+                      ? `，${countdown}s`
                       : ''}
                   </div>
                 </>

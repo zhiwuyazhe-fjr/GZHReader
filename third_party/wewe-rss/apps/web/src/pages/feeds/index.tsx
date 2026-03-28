@@ -1,10 +1,19 @@
 import dayjs from 'dayjs';
-import { MouseEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useNavigate, useParams } from 'react-router-dom';
 import { serverOriginUrl } from '@web/utils/env';
 import { trpc } from '@web/utils/trpc';
 import ArticleList from './list';
+
+type FeedItem = {
+  id: string;
+  mpName: string;
+  mpCover?: string;
+  mpIntro?: string;
+  updateTime?: number;
+  hasHistory?: number;
+};
 
 type RefreshResult = {
   completed?: boolean;
@@ -18,6 +27,7 @@ const refreshSummaryText = (result?: RefreshResult) => {
   if (!result) {
     return '刷新已经完成';
   }
+
   const refreshedCount = result.refreshedCount ?? 0;
   const totalCount = result.totalCount ?? refreshedCount;
   const budgetRemaining =
@@ -25,7 +35,8 @@ const refreshSummaryText = (result?: RefreshResult) => {
       ? `，剩余预算 ${result.budgetRemaining} 次`
       : '';
   const reason = result.reason ? `。${result.reason}` : '';
-  return `本次刷新处理了 ${refreshedCount} / ${totalCount} 个订阅${budgetRemaining}${reason}`;
+
+  return `本轮处理 ${refreshedCount} / ${totalCount} 个订阅${budgetRemaining}${reason}`;
 };
 
 const Feeds = () => {
@@ -50,7 +61,6 @@ const Feeds = () => {
 
   const { mutateAsync: getMpInfo, isLoading: isGetMpInfoLoading } =
     trpc.platform.getMpInfo.useMutation({});
-  const { mutateAsync: updateMpInfo } = trpc.feed.edit.useMutation({});
   const { mutateAsync: addFeed, isLoading: isAddFeedLoading } =
     trpc.feed.add.useMutation({});
   const { mutateAsync: refreshMpArticles, isLoading: isRefreshLoading } =
@@ -73,16 +83,29 @@ const Feeds = () => {
     setCurrentMpId(id || '');
   }, [id]);
 
+  const items = (feedData?.items || []) as FeedItem[];
   const currentMpInfo = useMemo(
-    () => feedData?.items.find((item: any) => item.id === currentMpId),
-    [currentMpId, feedData?.items],
+    () => items.find((item) => item.id === currentMpId),
+    [currentMpId, items],
   );
+
+  const totalFeeds = items.length;
+  const lastUpdatedLabel = currentMpInfo?.updateTime
+    ? dayjs(currentMpInfo.updateTime * 1e3).format('YYYY-MM-DD HH:mm')
+    : totalFeeds > 0
+      ? '按需刷新'
+      : '等待接入';
 
   const handleConfirm = async () => {
     const links = wxsLink
       .split('\n')
       .map((item) => item.trim())
       .filter(Boolean);
+
+    if (!links.length) {
+      toast.error('先粘贴一条公众号文章分享链接');
+      return;
+    }
 
     for (const link of links) {
       const result = await getMpInfo({ wxsLink: link });
@@ -114,22 +137,21 @@ const Feeds = () => {
     }
 
     await utils.article.list.reset();
-    refetchFeedList();
+    await refetchFeedList();
     setWxsLink('');
     setIsModalOpen(false);
   };
 
-  const exportOpml = (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    if (!feedData?.items?.length) {
+  const exportOpml = () => {
+    if (!items.length) {
       toast.error('还没有可导出的订阅源');
       return;
     }
 
     let opmlContent = `<?xml version="1.0" encoding="UTF-8"?>\n`;
     opmlContent += `<opml version="2.0">\n<head>\n<title>GZHReader 公众号后台订阅</title>\n</head>\n<body>\n`;
-    feedData.items.forEach((sub: any) => {
-      opmlContent += `  <outline text="${sub.mpName}" type="rss" xmlUrl="${window.location.origin}/feeds/${sub.id}.atom" htmlUrl="${window.location.origin}/feeds/${sub.id}.atom" />\n`;
+    items.forEach((sub) => {
+      opmlContent += `  <outline text="${sub.mpName}" type="rss" xmlUrl="${serverOriginUrl}/feeds/${sub.id}.atom" htmlUrl="${serverOriginUrl}/feeds/${sub.id}.atom" />\n`;
     });
     opmlContent += `</body>\n</opml>`;
 
@@ -148,6 +170,7 @@ const Feeds = () => {
     if (!currentMpInfo) {
       return;
     }
+
     const result = (await refreshMpArticles({
       mpId: currentMpInfo.id,
     })) as RefreshResult;
@@ -176,21 +199,36 @@ const Feeds = () => {
     }
     if (inProgressHistoryMp?.id === currentMpInfo.id) {
       await getHistoryArticles({ mpId: '' });
+      toast.success('历史抓取已停止');
     } else {
       await getHistoryArticles({ mpId: currentMpInfo.id });
+      toast.success('历史抓取已经开始');
     }
     await refetchInProgressHistoryMp();
   };
 
+  const removeCurrentFeed = async () => {
+    if (!currentMpInfo) {
+      return;
+    }
+    await deleteFeed(currentMpInfo.id);
+    await utils.article.list.reset();
+    await refetchFeedList();
+    setCurrentMpId('');
+    navigate('/feeds');
+    toast.success('订阅已经移除');
+  };
+
   return (
     <>
-      <section className="rss-panel-hero">
+      <section className="rss-panel-hero rss-hero-grid">
         <div className="rss-hero-copy">
           <div className="rss-eyebrow">订阅编辑台</div>
-          <h1 className="rss-title">把公众号刷新收进一张更安静的编辑桌</h1>
+          <h1 className="rss-title">把公众号更新收进一张更安静的编辑桌</h1>
           <div className="rss-rule" />
           <p className="rss-copy">
-            这里负责订阅源、文章拉取和聚合输出。新的刷新逻辑会优先保护账号健康，预算到顶时自动分批，不再硬刷到账号失效
+            这里负责订阅接入、文章刷新和聚合导出。新的刷新逻辑会优先保护账号健康，
+            当预算到顶时自动分批，不再为了刷完一轮而把账号硬推到失效。
           </p>
           <div className="rss-actions">
             <button
@@ -216,23 +254,40 @@ const Feeds = () => {
             >
               打开聚合 Atom
             </a>
+            <button
+              type="button"
+              className="rss-button is-secondary"
+              onClick={exportOpml}
+            >
+              导出 OPML
+            </button>
           </div>
         </div>
-        <div className="rss-note">
-          <strong>额度规则</strong>
-          <br />
-          每个账号每天最多 50 次，请求总预算达到 280 次后会自动停下，剩余内容留到下一轮继续
-        </div>
+        <aside className="rss-hero-side">
+          <div className="rss-stat-item">
+            <div className="rss-stat-label">当前订阅</div>
+            <div className="rss-stat-value">{totalFeeds}</div>
+          </div>
+          <div className="rss-stat-item">
+            <div className="rss-stat-label">最近更新时间</div>
+            <div className="rss-stat-copy">{lastUpdatedLabel}</div>
+          </div>
+          <div className="rss-note">
+            <strong>额度规则</strong>
+            <br />
+            每个账号每天最多 50 次，请求总预算达到 280 次后会自动暂停，剩余内容留到下一轮继续。
+          </div>
+        </aside>
       </section>
 
       <div className="rss-page-grid">
         <aside className="rss-sidebar">
           <div className="rss-panel-header">
             <div>
-              <h2 className="rss-panel-title">订阅列表</h2>
+              <h2 className="rss-panel-title">订阅目录</h2>
               <p className="rss-panel-copy">
-                共 {feedData?.items.length || 0} 个订阅
-                {isFeedLoading ? '，列表更新中' : ''}
+                共 {totalFeeds} 个订阅
+                {isFeedLoading ? '，目录更新中' : '，点击即可查看细节'}
               </p>
             </div>
           </div>
@@ -251,17 +306,17 @@ const Feeds = () => {
               <div className="rss-stack">
                 <div className="rss-feed-name">全部订阅</div>
                 <div className="rss-feed-intro">
-                  从这里统一更新、导出 OPML，或查看所有文章列表
+                  在这里统一刷新、打开聚合 Atom，或检查所有文章的收录情况。
                 </div>
               </div>
             </button>
 
-            {(feedData?.items || []).length === 0 ? (
+            {!items.length ? (
               <div className="rss-empty">
-                还没有订阅源。添加一条公众号文章分享链接，就能把对应公众号接进后台
+                还没有订阅源。粘贴一条公众号文章分享链接，就能把对应公众号接进后台。
               </div>
             ) : (
-              (feedData?.items || []).map((item: any) => (
+              items.map((item) => (
                 <button
                   type="button"
                   key={item.id}
@@ -287,7 +342,7 @@ const Feeds = () => {
                   <div className="rss-stack">
                     <div className="rss-feed-name">{item.mpName}</div>
                     <div className="rss-feed-intro">
-                      {item.mpIntro || '已接入聚合源，点击查看文章与刷新状态'}
+                      {item.mpIntro || '已接入聚合源，点开可以继续刷新和查看文章列表'}
                     </div>
                   </div>
                 </button>
@@ -305,8 +360,8 @@ const Feeds = () => {
                 </h2>
                 <p className="rss-panel-copy">
                   {currentMpInfo
-                    ? currentMpInfo.mpIntro || '当前订阅的刷新、历史拉取与导出入口'
-                    : '查看全量聚合结果，或从这里触发一轮预算内刷新'}
+                    ? currentMpInfo.mpIntro || '当前订阅的刷新、历史抓取与文章入口'
+                    : '查看整体聚合结果，或从这里触发预算内的批量刷新'}
                 </p>
               </div>
               <div className="rss-actions">
@@ -324,55 +379,14 @@ const Feeds = () => {
                       <button
                         type="button"
                         className="rss-button is-secondary"
-                        disabled={
-                          isHistoryLoading ||
-                          isRefreshLoading ||
-                          Boolean(
-                            inProgressHistoryMp?.id &&
-                              inProgressHistoryMp?.id !== currentMpInfo.id,
-                          )
-                        }
+                        disabled={isHistoryLoading}
                         onClick={toggleHistorySync}
                       >
                         {inProgressHistoryMp?.id === currentMpInfo.id
-                          ? '停止历史拉取'
-                          : '拉取历史文章'}
+                          ? '停止历史抓取'
+                          : '补抓历史文章'}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className={`rss-button ${
-                        currentMpInfo.status === 1
-                          ? 'is-secondary'
-                          : 'is-success'
-                      }`}
-                      onClick={async () => {
-                        await updateMpInfo({
-                          id: currentMpInfo.id,
-                          data: {
-                            status: currentMpInfo.status === 1 ? 0 : 1,
-                          },
-                        });
-                        await refetchFeedList();
-                      }}
-                    >
-                      {currentMpInfo.status === 1 ? '暂停自动更新' : '恢复自动更新'}
-                    </button>
-                    <button
-                      type="button"
-                      className="rss-button is-danger"
-                      disabled={isDeleteFeedLoading}
-                      onClick={async () => {
-                        if (!window.confirm('确定要删除这个订阅吗？')) {
-                          return;
-                        }
-                        await deleteFeed(currentMpInfo.id);
-                        navigate('/feeds');
-                        await refetchFeedList();
-                      }}
-                    >
-                      删除订阅
-                    </button>
                     <a
                       className="rss-button is-secondary"
                       href={`${serverOriginUrl}/feeds/${currentMpInfo.id}.atom`}
@@ -381,15 +395,26 @@ const Feeds = () => {
                     >
                       打开该订阅 Atom
                     </a>
+                    <button
+                      type="button"
+                      className="rss-button is-danger"
+                      disabled={isDeleteFeedLoading}
+                      onClick={removeCurrentFeed}
+                    >
+                      删除当前订阅
+                    </button>
                   </>
                 ) : (
                   <>
                     <button
                       type="button"
-                      className="rss-button is-secondary"
-                      onClick={exportOpml}
+                      className="rss-button is-primary"
+                      disabled={Boolean(isRefreshAllRunning) || isRefreshLoading}
+                      onClick={refreshAllFeeds}
                     >
-                      导出 OPML
+                      {isRefreshAllRunning || isRefreshLoading
+                        ? '更新全部中'
+                        : '刷新全部订阅'}
                     </button>
                     <a
                       className="rss-button is-secondary"
@@ -397,77 +422,46 @@ const Feeds = () => {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      打开全部 Atom
+                      打开聚合 Atom
                     </a>
                   </>
                 )}
               </div>
             </div>
 
-            <div className="rss-meta">
-              {currentMpInfo ? (
-                <>
-                  <span>
-                    最后同步
-                    <strong>
-                      {' '}
-                      {currentMpInfo.syncTime
-                        ? dayjs(currentMpInfo.syncTime * 1000).format(
-                            'YYYY-MM-DD HH:mm:ss',
-                          )
-                        : '暂无'}
-                    </strong>
-                  </span>
-                  <span>
-                    自动更新
-                    <strong>
-                      {' '}
-                      {currentMpInfo.status === 1 ? '已启用' : '已暂停'}
-                    </strong>
-                  </span>
-                  {inProgressHistoryMp?.id === currentMpInfo.id && (
-                    <span>
-                      历史拉取
-                      <strong> 第 {inProgressHistoryMp.page} 页进行中</strong>
-                    </span>
-                  )}
-                </>
-              ) : (
-                <>
-                  <span>
-                    聚合输出
-                    <strong> {serverOriginUrl}/feeds/all.atom</strong>
-                  </span>
-                  <span>
-                    刷新策略
-                    <strong> 预算内分批</strong>
-                  </span>
-                </>
-              )}
+            <div className="rss-note">
+              {currentMpInfo
+                ? `最近更新时间：${lastUpdatedLabel}`
+                : '当总预算接近上限时，系统会自动暂停本轮刷新，并把剩余内容留到下一轮继续处理。'}
             </div>
           </article>
 
           <article className="rss-panel">
+            <div className="rss-panel-header">
+              <div>
+                <h2 className="rss-panel-title">文章列表</h2>
+                <p className="rss-panel-copy">
+                  文章会按发布时间倒序显示，方便快速确认最新抓取结果。
+                </p>
+              </div>
+            </div>
             <ArticleList />
           </article>
         </section>
       </div>
 
       {isModalOpen && (
-        <div
-          className="rss-modal-backdrop"
-          onClick={() => setIsModalOpen(false)}
-        >
+        <div className="rss-modal-backdrop" onClick={() => setIsModalOpen(false)}>
           <div
             className="rss-modal-card"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="rss-modal-head">
               <div className="rss-stack">
-                <div className="rss-eyebrow">接入订阅</div>
-                <h2 className="rss-modal-title">添加公众号订阅源</h2>
+                <div className="rss-eyebrow">接入入口</div>
+                <h2 className="rss-modal-title">添加新的公众号订阅</h2>
                 <p className="rss-panel-copy">
-                  把公众号文章分享链接贴进来，一行一条。后台会自动识别公众号信息，并完成首轮刷新
+                  粘贴公众号文章分享链接，后台会自动识别所属公众号并接入聚合源。可以一次粘贴多条，每行一条。
                 </p>
               </div>
               <button
@@ -478,42 +472,32 @@ const Feeds = () => {
                 ×
               </button>
             </div>
+
             <label className="rss-field">
               <span className="rss-field-label">公众号文章链接</span>
               <textarea
                 className="rss-textarea"
                 value={wxsLink}
                 onChange={(event) => setWxsLink(event.target.value)}
-                placeholder="每行一条 https://mp.weixin.qq.com/s/..."
-                autoFocus
+                placeholder="https://mp.weixin.qq.com/s/..."
               />
             </label>
+
             <div className="rss-actions">
+              <button
+                type="button"
+                className="rss-button is-primary"
+                disabled={isGetMpInfoLoading || isAddFeedLoading}
+                onClick={handleConfirm}
+              >
+                {isGetMpInfoLoading || isAddFeedLoading ? '接入中' : '确认接入'}
+              </button>
               <button
                 type="button"
                 className="rss-button is-secondary"
                 onClick={() => setIsModalOpen(false)}
               >
-                取消
-              </button>
-              <button
-                type="button"
-                className="rss-button is-primary"
-                disabled={
-                  !wxsLink
-                    .split('\n')
-                    .some((line) =>
-                      line.trim().startsWith('https://mp.weixin.qq.com/s/'),
-                    ) ||
-                  isAddFeedLoading ||
-                  isGetMpInfoLoading ||
-                  isRefreshLoading
-                }
-                onClick={handleConfirm}
-              >
-                {isAddFeedLoading || isGetMpInfoLoading || isRefreshLoading
-                  ? '处理中'
-                  : '确认添加'}
+                稍后再说
               </button>
             </div>
           </div>

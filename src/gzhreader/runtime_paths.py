@@ -94,7 +94,11 @@ def get_runtime_paths() -> RuntimePaths:
     rss_service_pid_file = rss_service_dir / "wewe-rss.pid"
     rss_service_log_path = logs_dir / "wewe-rss.log"
     bundled_wewe_rss_source_dir = get_repo_root() / "third_party" / "wewe-rss"
-    bundled_wewe_rss_runtime_dir = resource_dir / "wewe-rss-runtime"
+    bundled_wewe_rss_runtime_dir = (
+        resource_dir / "wewe-rss-runtime"
+        if is_frozen_app()
+        else get_repo_root() / "build" / "wewe-rss-runtime"
+    )
     return RuntimePaths(
         state_dir=state_dir,
         config_path=config_path,

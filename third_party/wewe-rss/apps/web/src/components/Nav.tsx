@@ -9,7 +9,7 @@ const navItems = [
   },
   {
     href: '/accounts',
-    name: '账号管理',
+    name: '账号池',
   },
 ] as const;
 
@@ -23,18 +23,18 @@ const Nav = () => {
           alt="公众号后台"
         />
         <div className="rss-brand-copy">
-          <div className="rss-brand-kicker">Bundled Service</div>
+          <div className="rss-brand-kicker">Built Into GZHReader</div>
           <div className="rss-brand-title-row">
             <div className="rss-brand-title">公众号后台</div>
             <span className="rss-version-badge">v{appVersion}</span>
           </div>
           <div className="rss-brand-subtitle">
-            扫码登录、维护订阅和刷新聚合源都收在这里
+            在这里维护账号、订阅与聚合源，保持每天的阅读整理安静而稳定
           </div>
         </div>
       </div>
       <div className="rss-topbar-actions">
-        <nav className="rss-topnav" aria-label="后台导航">
+        <nav className="rss-topnav" aria-label="公众号后台导航">
           {navItems.map((item) => (
             <NavLink
               key={item.href}

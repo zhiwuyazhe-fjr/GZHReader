@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { httpBatchLink, loggerLink } from '@trpc/client';
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { clearAuthCode, getAuthCode, setAuthCode } from '../utils/auth';
 import { enabledAuthCode, serverOriginUrl } from '../utils/env';
@@ -11,6 +11,12 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!enabledAuthCode) {
+      clearAuthCode();
+    }
+  }, []);
 
   const handleNoAuth = () => {
     if (!enabledAuthCode) {
@@ -43,9 +49,11 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
               }
 
               if (error.data?.httpStatus === 401) {
-                toast.error('当前后台会话不可用', {
-                  description: error.message,
-                });
+                if (enabledAuthCode) {
+                  toast.error('后台访问码已失效', {
+                    description: error.message,
+                  });
+                }
                 handleNoAuth();
                 return;
               }
@@ -62,9 +70,11 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
               }
 
               if (error.data?.httpStatus === 401) {
-                toast.error('当前后台会话不可用', {
-                  description: error.message,
-                });
+                if (enabledAuthCode) {
+                  toast.error('后台访问码已失效', {
+                    description: error.message,
+                  });
+                }
                 handleNoAuth();
                 return;
               }
@@ -78,10 +88,6 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
       }),
   );
 
-  if (!enabledAuthCode) {
-    clearAuthCode();
-  }
-
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [
@@ -92,11 +98,11 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
           url: `${serverOriginUrl}/trpc`,
           async headers() {
             if (!enabledAuthCode) {
+              clearAuthCode();
               return {};
             }
 
             const token = getAuthCode();
-
             if (!token) {
               handleNoAuth();
               return {};

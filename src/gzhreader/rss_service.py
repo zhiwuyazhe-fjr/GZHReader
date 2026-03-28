@@ -12,7 +12,7 @@ import httpx
 
 from .config import RSSServiceConfig
 from .platform_utils import hidden_process_kwargs, open_web_url
-from .runtime_paths import RuntimePaths, ensure_runtime_dirs, get_runtime_paths
+from .runtime_paths import RuntimePaths, ensure_runtime_dirs, get_runtime_paths, is_frozen_app
 
 
 @dataclass(slots=True)
@@ -188,11 +188,14 @@ class BundledRSSServiceManager:
         }
 
     def _resolve_runtime_root(self) -> Path | None:
+        source = self.runtime_paths.bundled_wewe_rss_source_dir
+        if not is_frozen_app() and (source / "apps" / "server" / "dist" / "main.js").exists():
+            return source
+
         packaged = self.runtime_paths.bundled_wewe_rss_runtime_dir
         if packaged.exists():
             return packaged
 
-        source = self.runtime_paths.bundled_wewe_rss_source_dir
         if (source / "apps" / "server" / "dist" / "main.js").exists():
             return source
         return None
@@ -205,7 +208,7 @@ class BundledRSSServiceManager:
         return Path(system_node) if system_node else None
 
     def _apply_sqlite_migrations(self, runtime_root: Path, db_path: Path) -> None:
-        migrations_root = runtime_root / "apps" / "server" / "prisma" / "migrations"
+        migrations_root = self._resolve_sqlite_migrations_root(runtime_root)
         if not migrations_root.exists():
             return
 
@@ -239,6 +242,16 @@ class BundledRSSServiceManager:
                     (migration_dir.name,),
                 )
             connection.commit()
+
+    def _resolve_sqlite_migrations_root(self, runtime_root: Path) -> Path:
+        candidates = (
+            runtime_root / "apps" / "server" / "prisma-sqlite" / "migrations",
+            runtime_root / "apps" / "server" / "prisma" / "migrations",
+        )
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[-1]
 
     def _wait_until_ready(self, timeout_seconds: float) -> bool:
         deadline = time.monotonic() + timeout_seconds

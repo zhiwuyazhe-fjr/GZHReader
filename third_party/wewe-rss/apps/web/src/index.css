@@ -88,7 +88,7 @@ select {
 }
 
 .rss-frame {
-  max-width: 1280px;
+  max-width: 1180px;
   min-height: calc(100vh - 48px);
   margin: 0 auto;
   border: 1px solid var(--rss-line);
@@ -104,7 +104,7 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 28px;
-  padding: 28px 32px 20px;
+  padding: 24px 32px 18px;
   border-bottom: 1px solid var(--rss-line);
 }
 
@@ -132,7 +132,7 @@ select {
 }
 
 .rss-brand-kicker {
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--rss-text-muted);
@@ -147,7 +147,7 @@ select {
 
 .rss-brand-title {
   font-family: var(--rss-display);
-  font-size: 30px;
+  font-size: 28px;
   line-height: 1;
   letter-spacing: -0.04em;
 }
@@ -167,8 +167,8 @@ select {
 }
 
 .rss-brand-subtitle {
-  font-size: 15px;
-  line-height: 1.8;
+  font-size: 16px;
+  line-height: 1.75;
   color: var(--rss-text-soft);
 }
 
@@ -283,9 +283,9 @@ select {
 }
 
 .rss-page {
-  padding: 30px 32px 36px;
+  padding: 28px 32px 36px;
   display: grid;
-  gap: 24px;
+  gap: 28px;
 }
 
 .rss-page-grid {
@@ -313,12 +313,18 @@ select {
 .rss-panel-hero {
   display: grid;
   gap: 16px;
-  padding: 24px;
+  padding: 28px;
   border-radius: var(--rss-radius-xl);
   border: 1px solid var(--rss-line);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--rss-panel) 82%, transparent), color-mix(in srgb, var(--rss-panel-strong) 94%, transparent)),
     var(--rss-panel);
+}
+
+.rss-hero-grid {
+  grid-template-columns: minmax(0, 2.1fr) minmax(260px, 0.95fr);
+  gap: 24px;
+  align-items: start;
 }
 
 .rss-hero-copy {
@@ -342,15 +348,15 @@ select {
 .rss-title {
   margin: 0;
   font-family: var(--rss-display);
-  font-size: clamp(34px, 3.6vw, 48px);
+  font-size: clamp(32px, 3.3vw, 44px);
   line-height: 1.05;
   letter-spacing: -0.045em;
 }
 
 .rss-copy {
   margin: 0;
-  font-size: 16px;
-  line-height: 1.9;
+  font-size: 17px;
+  line-height: 1.85;
   color: var(--rss-text-soft);
 }
 
@@ -382,7 +388,7 @@ select {
 
 .rss-panel-copy {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.85;
   color: var(--rss-text-soft);
   max-width: 52ch;
@@ -397,7 +403,7 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 12px 18px;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--rss-text-soft);
 }
 
@@ -468,7 +474,7 @@ select {
 }
 
 .rss-feed-intro {
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.8;
   color: var(--rss-text-muted);
 }
@@ -561,7 +567,7 @@ select {
 
 .rss-note {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.8;
   color: var(--rss-text-soft);
 }
@@ -576,8 +582,47 @@ select {
   border: 1px dashed var(--rss-line-strong);
   background: color-mix(in srgb, var(--rss-panel-strong) 64%, transparent);
   color: var(--rss-text-soft);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.85;
+}
+
+.rss-hero-side {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.rss-stat-item {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: var(--rss-radius-md);
+  border: 1px solid var(--rss-line);
+  background: color-mix(in srgb, var(--rss-panel) 78%, transparent);
+}
+
+.rss-stat-label {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rss-text-muted);
+}
+
+.rss-stat-value {
+  font-family: var(--rss-display);
+  font-size: clamp(28px, 4vw, 38px);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.rss-stat-copy {
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--rss-text-soft);
+}
+
+.rss-account-card {
+  gap: 18px;
 }
 
 .rss-table-shell {
@@ -746,6 +791,10 @@ select {
 
 @media (max-width: 1024px) {
   .rss-page-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rss-hero-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -1,52 +1,31 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { enabledAuthCode } from '@web/utils/env';
-import { setAuthCode } from '@web/utils/auth';
+import { clearAuthCode, getAuthCode, setAuthCode } from '@web/utils/auth';
 
-const LoginPage = () => {
-  const [codeValue, setCodeValue] = useState('');
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!enabledAuthCode) {
-      navigate('/', { replace: true });
-    }
-  }, [navigate]);
-
+export default function LoginPage() {
   if (!enabledAuthCode) {
-    return null;
+    clearAuthCode();
+    return <Navigate to="/" replace />;
   }
 
   return (
     <div className="rss-auth-shell">
       <div className="rss-auth-card">
-        <div className="rss-eyebrow">后台入口</div>
-        <h1 className="rss-auth-title">输入访问码</h1>
+        <div className="rss-eyebrow">兼容入口</div>
+        <h1 className="rss-auth-title">输入访问码后继续进入公众号后台</h1>
         <p className="rss-auth-copy">
-          当前部署启用了访问码保护。输入正确的 auth code 后，才能继续进入公众号后台
+          当前部署启用了访问码保护。输入正确的访问码后，才能继续使用订阅与账号管理。
         </p>
         <label className="rss-field">
-          <span className="rss-field-label">Auth Code</span>
+          <span className="rss-field-label">访问码</span>
           <input
             className="rss-input"
-            value={codeValue}
-            onChange={(event) => setCodeValue(event.target.value)}
-            placeholder="输入 auth code"
+            type="password"
+            defaultValue={getAuthCode() ?? ''}
+            onChange={(event) => setAuthCode(event.target.value)}
           />
         </label>
-        <button
-          type="button"
-          className="rss-button is-primary"
-          onClick={() => {
-            setAuthCode(codeValue);
-            navigate('/');
-          }}
-        >
-          进入后台
-        </button>
       </div>
     </div>
   );
-};
-
-export default LoginPage;
+}

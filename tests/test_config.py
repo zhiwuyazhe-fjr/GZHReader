@@ -65,7 +65,8 @@ rss:
     cfg = ensure_config(config_path)
 
     assert cfg.rss.daily_article_limit == 30
-    assert (tmp_path / "config.yaml.bak").exists()
+    assert cfg.source.url == "http://127.0.0.1:4000/feeds/all.atom"
+    assert (tmp_path / "config.yaml.legacy-reset.bak").exists()
     migrated_text = config_path.read_text(encoding="utf-8")
     assert "daily_article_limit: 30" in migrated_text
     assert "max_articles_per_feed" not in migrated_text
@@ -143,6 +144,46 @@ rss_service:
     cfg = ensure_config(config_path)
 
     assert cfg.rss_service.base_url == "http://127.0.0.1:4100"
+    assert cfg.source.url == "http://127.0.0.1:4100/feeds/all.atom"
+    assert (tmp_path / "config.yaml.legacy-reset.bak").exists()
+
+
+def test_legacy_wewe_rss_config_is_reset_and_backed_up(tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+source:
+  mode: aggregate
+  url: http://localhost:4000/feeds/all.atom
+wewe_rss:
+  enabled: true
+  base_url: http://localhost:4100
+  auth_code: '123567'
+  service_dir: ./infra/wewe-rss
+  compose_variant: mysql
+  port: 4100
+llm:
+  base_url: https://example.com/v1
+  api_key: sk-test
+  model: qwen
+output:
+  briefing_dir: C:/demo/briefings
+  raw_archive_dir: C:/demo/raw
+""".strip(),
+        encoding="utf-8",
+    )
+
+    cfg = ensure_config(config_path)
+
+    assert cfg.rss_service.base_url == "http://127.0.0.1:4100"
+    assert cfg.rss_service.auth_code == ""
+    assert cfg.source.url == "http://127.0.0.1:4100/feeds/all.atom"
+    assert cfg.llm.model == "qwen"
+    assert cfg.output.briefing_dir == "C:/demo/briefings"
+    assert (tmp_path / "config.yaml.legacy-reset.bak").exists()
+    migrated_text = config_path.read_text(encoding="utf-8")
+    assert "wewe_rss:" not in migrated_text
+    assert "auth_code: ''" in migrated_text
 
 
 def test_default_user_agent_follows_package_version() -> None:
