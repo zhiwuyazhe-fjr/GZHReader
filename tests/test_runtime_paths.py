@@ -76,7 +76,7 @@ source:
   url: http://127.0.0.1:4000/feeds/all.atom
 db_path: ./data/gzhreader.db
 wewe_rss:
-  service_dir: ./infra/wewe-rss
+  auth_code: '123567'
 output:
   briefing_dir: ./output/briefings
   raw_archive_dir: ./output/raw

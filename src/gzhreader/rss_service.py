@@ -236,7 +236,12 @@ class BundledRSSServiceManager:
                 if migration_dir.name in applied:
                     continue
 
-                connection.executescript(migration_sql.read_text(encoding="utf-8"))
+                try:
+                    connection.executescript(migration_sql.read_text(encoding="utf-8"))
+                except sqlite3.OperationalError as exc:
+                    message = str(exc).lower()
+                    if "already exists" not in message and "duplicate column name" not in message:
+                        raise
                 connection.execute(
                     "INSERT INTO _gzhreader_sqlite_migrations(name) VALUES (?)",
                     (migration_dir.name,),
@@ -244,14 +249,7 @@ class BundledRSSServiceManager:
             connection.commit()
 
     def _resolve_sqlite_migrations_root(self, runtime_root: Path) -> Path:
-        candidates = (
-            runtime_root / "apps" / "server" / "prisma-sqlite" / "migrations",
-            runtime_root / "apps" / "server" / "prisma" / "migrations",
-        )
-        for candidate in candidates:
-            if candidate.exists():
-                return candidate
-        return candidates[-1]
+        return runtime_root / "apps" / "server" / "prisma" / "migrations"
 
     def _wait_until_ready(self, timeout_seconds: float) -> bool:
         deadline = time.monotonic() + timeout_seconds

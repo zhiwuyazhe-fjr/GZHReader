@@ -61,14 +61,14 @@ class FakeBackend:
             },
             "llm": {
                 "configured": True,
-                "detail": "AI 摘要配置已保存，本地密钥将继续用于生成摘要。",
+                "detail": "AI 模型配置已经保存，需要摘要时会直接继续使用。",
                 "api_key_source": "config",
                 "api_key_saved": True,
                 "uses_env_api_key": False,
             },
             "schedule": {
                 "installed": self.schedule_installed,
-                "detail": "task installed" if self.schedule_installed else "not installed",
+                "detail": "已经开启每日自动整理" if self.schedule_installed else "还没有开启每日自动整理",
                 "daily_limit_label": "每天最多 20 篇",
             },
             "source": {
@@ -104,7 +104,36 @@ class FakeBackend:
                     {"value": "dark", "label": "深色"},
                 ],
             },
-            "app_version": "1.5.0",
+            "about_modal": {
+                "button_label": "关于",
+                "dialog_id": "about-dialog",
+                "tagline": "把公众号阅读整理成更安静的本地工作台",
+                "motivation_title": "开发动机",
+                "motivation_text": "让每天的阅读更容易整理和回看",
+                "repo_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
+                "feedback_title": "反馈",
+                "feedback_text": "欢迎告诉我哪些地方还可以更顺手",
+                "issues_url": "https://github.com/zhiwuyazhe-fjr/GZHReader/issues",
+                "feedback_label": "反馈问题",
+                "support_title": "支持项目",
+                "support_text": "如果它帮到了你，也欢迎分享给朋友",
+                "share_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
+                "support_label": "分享给朋友",
+                "author_title": "关于作者",
+                "author_name": "zhiwuyazhe_fjr",
+                "author_lines": [
+                    "📍 TJU | CS 在读",
+                    "🚀 AI 探索者 | 预备役创业者",
+                    "✨ Elon Musk 信徒",
+                ],
+                "author_github_url": "https://github.com/zhiwuyazhe-fjr",
+                "author_github_label": "GitHub主页",
+                "author_xhs_label": "小红书",
+                "author_xhs_image_url": "/static/brand/xhs.jpg",
+                "footer_lines": ["本地优先", "阅读整理工作台"],
+            },
+            "app_version": "2.0.0",
+            "app_version_display": "2.0.0",
         }
 
     def build_settings_context(self, message: str = "", level: str = "info") -> dict:
@@ -136,7 +165,9 @@ class FakeBackend:
                     {"value": "dark", "label": "深色"},
                 ],
             },
-            "app_version": "1.5.0",
+            "about_modal": self.build_home_context()["about_modal"],
+            "app_version": "2.0.0",
+            "app_version_display": "2.0.0",
         }
 
     def start_service(self) -> str:
@@ -221,11 +252,12 @@ def test_settings_page_renders_editorial_sections() -> None:
 
     assert response.status_code == 200
     assert "公众号服务" in response.text
-    assert "AI 摘要" in response.text
+    assert "AI模型配置" in response.text
     assert "输出与归档" in response.text
     assert "自动运行" in response.text
     assert "高级配置" in response.text
     assert "把服务与设置留在幕后" in response.text
+    assert "保存输出目录" not in response.text
     assert "AUTH_CODE" not in response.text
     assert "跟随系统" in response.text
     assert "浅色" in response.text
@@ -274,12 +306,18 @@ def test_run_now_quick_action_posts_today() -> None:
 
 
 def test_briefing_page_renders_markdown_text() -> None:
-    client = TestClient(create_app(backend=FakeBackend()))
+    class MarkdownBackend(FakeBackend):
+        def read_briefing(self, briefing_date: str):
+            return Path(f"C:/demo/output/briefings/{briefing_date}.md"), "\ufeff# 测试日报\n\n- 第一条"
+
+    client = TestClient(create_app(backend=MarkdownBackend()))
 
     response = client.get("/briefings/2026-03-07")
 
     assert response.status_code == 200
     assert "测试日报" in response.text
+    assert "<h1" in response.text
+    assert "<li>第一条</li>" in response.text
 
 
 def test_healthz_returns_ok() -> None:
@@ -381,3 +419,10 @@ def test_homepage_renders_about_trigger_and_dialog() -> None:
     assert "about-dialog" in response.text
     assert "data-open-dialog" in response.text
     assert "关于" in response.text
+    assert "反馈问题" in response.text
+    assert "分享给朋友" in response.text
+    assert "GitHub主页" in response.text
+    assert "小红书" in response.text
+    assert "生成特定日期" in response.text
+    assert "v2.0.0" in response.text
+    assert "vv2.0.0" not in response.text

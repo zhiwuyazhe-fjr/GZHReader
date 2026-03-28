@@ -70,10 +70,8 @@ def test_bundled_rss_manager_disables_auth_code_in_runtime_env(tmp_path) -> None
 
 def test_bundled_rss_manager_prefers_sqlite_migration_directory(tmp_path) -> None:
     runtime_paths = _runtime_paths(tmp_path)
-    sqlite_migrations = runtime_paths.bundled_wewe_rss_runtime_dir / "apps" / "server" / "prisma-sqlite" / "migrations"
-    mysql_migrations = runtime_paths.bundled_wewe_rss_runtime_dir / "apps" / "server" / "prisma" / "migrations"
+    sqlite_migrations = runtime_paths.bundled_wewe_rss_runtime_dir / "apps" / "server" / "prisma" / "migrations"
     sqlite_migrations.mkdir(parents=True, exist_ok=True)
-    mysql_migrations.mkdir(parents=True, exist_ok=True)
 
     manager = BundledRSSServiceManager(
         RSSServiceConfig(

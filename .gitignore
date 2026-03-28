@@ -18,14 +18,11 @@ src/*.egg-info/
 
 # Local secrets/config
 config.yaml
-infra/wewe-rss/.env
 docs/GITHUB_PUBLISHING.md
 
 # Runtime data
 data/
 output/
-infra/wewe-rss/data/
-infra/wewe-rss/mysql/
 
 # OS/editor
 .DS_Store

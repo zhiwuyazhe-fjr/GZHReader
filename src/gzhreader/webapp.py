@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import date
 from html import escape
@@ -7,6 +8,7 @@ import logging
 from pathlib import Path
 from urllib.parse import urlencode
 
+from markdown import markdown
 import yaml
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -55,33 +57,41 @@ def _build_about_modal() -> dict[str, object]:
     return {
         "button_label": "关于",
         "dialog_id": "about-dialog",
-        "tagline": "把公众号阅读整理成本地日报的阅读工作台",
+        "tagline": "把公众号阅读整理成更安静的本地工作台",
         "motivation_title": "开发动机",
-        "motivation_text": (
-            "GZHReader 想把每天零散掠过的公众号阅读，整理成一份可以安静回看的本地日报。"
-            "它不强调配置感，而是希望像一张编辑台，把阅读、摘要和归档收拢到同一个地方。"
-        ),
+        "motivation_text": "我想把公众号阅读从零散推送里解放出来，让每天的内容可以被安静地整理、回看和沉淀",
+        "repo_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
         "feedback_title": "反馈",
-        "feedback_text": "关于页入口先保留到这里，后续可以继续补充反馈方式、支持入口和更多作者信息。",
-        "feedback_url": "",
-        "feedback_label": "",
+        "feedback_text": "如果你遇到问题，或者想告诉我哪些地方还能更顺手，欢迎直接提 issue",
+        "issues_url": "https://github.com/zhiwuyazhe-fjr/GZHReader/issues",
+        "feedback_label": "反馈问题",
         "support_title": "支持项目",
-        "support_text": "如果这个工作台帮你省下了每天整理公众号阅读的时间，它就已经完成了最重要的价值。",
-        "support_url": "",
-        "support_label": "",
+        "support_text": "如果它帮你省下了一点时间，也欢迎把它分享给同样需要的人",
+        "share_url": "https://github.com/zhiwuyazhe-fjr/GZHReader",
+        "support_label": "分享给朋友",
         "author_title": "关于作者",
-        "author_name": "GZHReader 作者",
+        "author_name": "zhiwuyazhe_fjr",
         "author_lines": [
-            "专注把公众号阅读、摘要与归档做成更安静的一体化体验",
-            "本轮入口先做成可复用的 about 弹窗，后续内容可以继续细化",
+            "📍 TJU | CS 在读",
+            "🚀 AI 探索者 | 预备役创业者",
+            "✨ Elon Musk 信徒",
         ],
-        "author_url": "",
-        "author_label": "",
+        "author_github_url": "https://github.com/zhiwuyazhe-fjr",
+        "author_github_label": "GitHub主页",
+        "author_xhs_label": "小红书",
+        "author_xhs_image_url": "/static/brand/xhs.jpg",
         "footer_lines": [
-            "本地优先 · 每日简报 · 公众号阅读工作台",
-            "为能长期回看的阅读流保留一个更稳的桌面入口",
+            "本地优先 · 公众号阅读工作台 · Markdown 日报",
+            "把每天的推送整理成真正值得回看的内容",
         ],
     }
+
+
+def _display_version(value: str) -> str:
+    normalized = value.strip()
+    while normalized[:1] in {"v", "V"}:
+        normalized = normalized[1:]
+    return normalized or value
 
 
 def _resolve_resource_dir(kind: str) -> Path:
@@ -118,11 +128,11 @@ def _build_llm_status(config: AppConfig) -> dict[str, object]:
 
     if configured:
         if api_key_source == "config":
-            detail = "AI 摘要配置已保存，本地密钥将继续用于生成摘要。"
+            detail = "AI 模型已经就绪，保存的密钥会继续用于生成摘要"
         else:
-            detail = "正在使用 OPENAI_API_KEY 环境变量生成摘要。"
+            detail = "AI 模型已经就绪，当前正在使用环境变量里的密钥"
     else:
-        detail = "还没有完成 AI 摘要配置。"
+        detail = "还没有完成 AI 模型配置"
 
     return {
         "configured": configured,
@@ -142,6 +152,15 @@ def _build_redacted_yaml(config: AppConfig) -> str:
     if isinstance(rss_service_payload, dict):
         rss_service_payload.pop("auth_code", None)
     return yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
+
+
+def _render_markdown(content: str) -> str:
+    normalized_content = content.lstrip("\ufeff")
+    return markdown(
+        normalized_content,
+        extensions=["extra", "fenced_code", "sane_lists", "tables", "toc"],
+        output_format="html5",
+    )
 
 
 def _display_path(value: str) -> str:
@@ -169,6 +188,7 @@ def _build_daily_limit_options(current_limit: str | int) -> list[dict[str, str]]
     values: list[str | int] = list(DAILY_ARTICLE_LIMIT_PRESETS)
     if normalized not in values:
         values = [normalized, *values]
+
     options: list[dict[str, str]] = []
     for value in values:
         if value == "all":
@@ -193,7 +213,7 @@ def _choose_output_dir(initial_dir: str) -> str | None:
         import tkinter as tk
         from tkinter import filedialog
     except Exception as exc:
-        raise RuntimeError("当前环境无法打开系统目录选择器，请手动输入目录路径。") from exc
+        raise RuntimeError("当前环境无法打开系统目录选择器，请手动输入路径") from exc
 
     root = tk.Tk()
     root.withdraw()
@@ -234,12 +254,31 @@ class DashboardBackend:
         home_summary = {
             "headline": "今日日报已经成刊" if latest_is_today else "今天的日报还在整理中",
             "detail": (
-                f"最近一次日报：{latest_briefing.date_text}"
+                f"最近一份日报整理于 {latest_briefing.date_text}"
                 if latest_briefing
-                else "启动公众号服务后，点击“立即生成今天”即可开始整理今天的阅读流。"
+                else "先看看账号状态，再生成今天的日报"
             ),
             "status_label": "已成刊" if latest_is_today else "整理中",
+            "service_summary": "公众号后台已经准备好了" if status["service"]["web_ok"] else "公众号后台正在准备",
+            "source_summary": "订阅已经可以读取" if status["source"]["ok"] else "先去后台看一下账号和订阅状态",
+            "llm_summary": "AI 模型已经就绪" if status["llm"]["configured"] else "需要摘要时再去设置里补上 AI 模型",
         }
+
+        reminders = [
+            {
+                "label": "先看看账号状态",
+                "detail": "打开公众号后台，确认账号没有进入待重登或冷却",
+            },
+            {
+                "label": "确认订阅已经刷新",
+                "detail": "如果有新内容，去后台点一次更新全部",
+            },
+            {
+                "label": "需要摘要时再补模型",
+                "detail": "AI 模型没配好时，也可以先生成纯整理版日报",
+            },
+        ]
+
         return {
             "page_title": "工作台",
             "message": message,
@@ -247,29 +286,19 @@ class DashboardBackend:
             "config": config,
             "status": status,
             "home_summary": home_summary,
-            "quick_actions": [
-                {"label": "立即生成今天", "action": "/actions/run-now"},
-                {"label": "打开公众号后台", "action": "/actions/service/open-admin"},
-                {"label": "进入设置", "href": "/settings"},
-            ],
             "recent_briefings": briefings[:7],
             "latest_briefing": latest_briefing,
             "today": today_text,
+            "today_reminders": reminders,
             "settings_snapshot": {
                 "llm": status["llm"]["detail"],
                 "schedule": status["schedule"]["detail"],
                 "output_dir": _display_path(config.output.briefing_dir),
             },
-            "theme_state": {
-                "default": "system",
-                "options": [
-                    {"value": "system", "label": "跟随系统"},
-                    {"value": "light", "label": "浅色"},
-                    {"value": "dark", "label": "深色"},
-                ],
-            },
+            "theme_state": _build_theme_state(),
             "about_modal": _build_about_modal(),
             "app_version": __version__,
+            "app_version_display": _display_version(__version__),
         }
 
     def build_settings_context(self, *, message: str = "", level: str = "info") -> dict[str, object]:
@@ -292,16 +321,10 @@ class DashboardBackend:
             "llm_api_key_saved": status["llm"]["api_key_saved"],
             "llm_api_key_source": status["llm"]["api_key_source"],
             "llm_uses_env_api_key": status["llm"]["uses_env_api_key"],
-            "theme_state": {
-                "default": "system",
-                "options": [
-                    {"value": "system", "label": "跟随系统"},
-                    {"value": "light", "label": "浅色"},
-                    {"value": "dark", "label": "深色"},
-                ],
-            },
+            "theme_state": _build_theme_state(),
             "about_modal": _build_about_modal(),
             "app_version": __version__,
+            "app_version_display": _display_version(__version__),
         }
 
     def collect_status(self, config: AppConfig) -> dict[str, object]:
@@ -349,6 +372,7 @@ class DashboardBackend:
             return []
         files = [file for file in briefing_dir.glob("*.md") if file.is_file()]
         files = sorted(files, key=lambda item: (item.stat().st_mtime, item.name), reverse=True)
+
         filtered: list[BriefingFile] = []
         for file in files:
             stem = file.stem
@@ -385,22 +409,22 @@ class DashboardBackend:
         output_dir = Path(config.output.briefing_dir).expanduser().resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
         open_local_path(output_dir)
-        return f"已尝试打开输出目录：{output_dir}"
+        return "已经帮你打开输出目录"
 
     def pick_output_dir(self) -> tuple[bool, str]:
         config = self.load_config()
         selected = _choose_output_dir(config.output.briefing_dir)
         if not selected:
-            return False, "已取消目录选择。"
+            return False, "这次没有修改目录"
         config.output.briefing_dir = _normalize_output_dir(selected)
         self.save_config(config)
-        return True, f"输出目录已更新：{config.output.briefing_dir}"
+        return True, "保存目录成功"
 
     def save_output_dir(self, briefing_dir: str) -> str:
         config = self.load_config()
         config.output.briefing_dir = _normalize_output_dir(briefing_dir)
         self.save_config(config)
-        return f"输出目录已保存：{config.output.briefing_dir}"
+        return "保存目录成功"
 
     def save_service_settings(self, *, port: int) -> str:
         config = self.load_config()
@@ -410,7 +434,7 @@ class DashboardBackend:
         if not config.source.url or config.source.url.endswith("/feeds/all.atom"):
             config.source.url = f"{config.rss_service.base_url}/feeds/all.atom"
         self.save_config(config)
-        return "公众号服务设置已保存。"
+        return "公众号服务设置已保存"
 
     def save_llm(
         self,
@@ -436,15 +460,15 @@ class DashboardBackend:
 
         ok, detail = OpenAICompatibleSummarizer(config.llm).check_connectivity()
         if ok:
-            return True, f"AI 摘要配置已保存并测试成功：{detail}"
-        return False, f"AI 摘要配置已保存，但测试失败：{detail}"
+            return True, f"AI 模型配置已保存，连通测试成功：{detail}"
+        return False, f"AI 模型配置已保存，连通测试没有通过：{detail}"
 
     def save_schedule(self, *, run_hour: int, run_minute: int, daily_article_limit: str) -> str:
         config = self.load_config()
         config.schedule.daily_time = _build_daily_time(run_hour, run_minute)
         config.rss.daily_article_limit = normalize_daily_article_limit(daily_article_limit)
         self.save_config(config)
-        return "自动运行时间与文章范围已保存。"
+        return "自动运行设置已保存"
 
     def install_schedule(self, *, run_hour: int, run_minute: int, daily_article_limit: str) -> str:
         config = self.load_config()
@@ -471,14 +495,8 @@ class DashboardBackend:
         result = service.run_for_date(target_date, feed_filter=None)
         if result.feed_errors:
             errors = "; ".join(f"{name}: {detail}" for name, detail in result.feed_errors.items())
-            return False, (
-                f"运行完成，但存在错误。run={result.run_key} collected={result.collected} "
-                f"inserted={result.inserted} summarized={result.summarized}；{errors}"
-            )
-        return True, (
-            f"运行完成。run={result.run_key} collected={result.collected} inserted={result.inserted} "
-            f"summarized={result.summarized} briefing={result.briefing_path}"
-        )
+            return False, f"日报已经生成，但有一部分内容没有成功整理：{errors}"
+        return True, f"日报已经生成：{result.briefing_path}"
 
     def save_advanced_yaml(self, yaml_text: str) -> str:
         parsed = yaml.safe_load(yaml_text) or {}
@@ -490,24 +508,33 @@ class DashboardBackend:
                 llm_payload["api_key"] = existing_config.llm.api_key
         config = AppConfig.model_validate(parsed)
         self.save_config(config)
-        return "高级 YAML 配置已保存。"
+        return "高级设置已保存"
 
     def _check_source(self, config: AppConfig) -> tuple[bool, str]:
         runtime_feed = config.runtime_feed()
         if not runtime_feed.url:
-            return False, "缺少 source.url。"
+            return False, "还没有找到可读取的订阅源"
         try:
             ok, detail = RSSClient(config.rss).check_feed(runtime_feed)
         except Exception as exc:
-            return False, f"聚合源检查失败：{exc}"
+            return False, f"订阅源暂时还没连上：{exc}"
         if ok:
-            return True, f"聚合源可读取：{runtime_feed.url}；{detail}"
-        return False, f"当前聚合源还不可用：{detail}"
+            return True, f"订阅源已经可以读取：{detail}"
+        return False, f"订阅源暂时还不可用：{detail}"
 
 
 def create_app(*, config_path: Path | None = None, backend: DashboardBackend | None = None) -> FastAPI:
     resolved_backend = backend or DashboardBackend(resolve_config_path(config_path))
-    web = FastAPI(title="GZHReader GUI")
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        try:
+            resolved_backend.start_service()
+        except Exception as exc:
+            LOGGER.warning("Unable to auto-start bundled RSS service: %s", exc)
+        yield
+
+    web = FastAPI(title="GZHReader GUI", lifespan=lifespan)
     web.state.backend = resolved_backend
     templates = _create_templates()
     web.state.templates = templates
@@ -520,7 +547,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
         return _render_error_response(
             request,
             title="页面暂时打不开",
-            description="GZHReader 刚刚在加载这个页面时遇到了问题，请稍后重试或查看日志。",
+            description="GZHReader 刚刚在加载这个页面时遇到了问题，请稍后重试，或者看一下日志",
             status_code=500,
         )
 
@@ -576,7 +603,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
             detail = web.state.backend.open_service_admin()
             return _redirect("/", detail, "success")
         except Exception as exc:
-            return _redirect("/", f"打开后台失败：{exc}", "error")
+            return _redirect("/", f"打开公众号后台失败：{exc}", "error")
 
     @web.post("/actions/service/save")
     def save_service_settings(port: int = Form(...)):
@@ -589,10 +616,10 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
     @web.post("/actions/save-llm")
     def save_llm(
         base_url: str = Form(...),
-        api_key: str = Form(...),
+        api_key: str = Form(""),
         model: str = Form(...),
-        timeout_seconds: int = Form(...),
-        retries: int = Form(...),
+        timeout_seconds: int = Form(90),
+        retries: int = Form(2),
     ):
         ok, detail = web.state.backend.save_llm(
             base_url=base_url,
@@ -609,7 +636,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
             detail = web.state.backend.save_output_dir(briefing_dir)
             return _redirect("/settings", detail, "success")
         except Exception as exc:
-            return _redirect("/settings", f"保存输出目录失败：{exc}", "error")
+            return _redirect("/settings", f"保存目录失败：{exc}", "error")
 
     @web.post("/actions/pick-output-dir")
     def pick_output_dir():
@@ -617,15 +644,15 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
             ok, detail = web.state.backend.pick_output_dir()
             return _redirect("/settings", detail, "success" if ok else "info")
         except Exception as exc:
-            return _redirect("/settings", f"选择输出目录失败：{exc}", "error")
+            return _redirect("/settings", f"选择目录失败：{exc}", "error")
 
     @web.post("/actions/open-output-dir")
     def open_output_dir():
         try:
             detail = web.state.backend.open_output_dir()
-            return _redirect("/", detail, "success")
+            return _redirect("/settings", detail, "success")
         except Exception as exc:
-            return _redirect("/", f"打开输出目录失败：{exc}", "error")
+            return _redirect("/settings", f"打开目录失败：{exc}", "error")
 
     @web.post("/actions/install-schedule")
     def install_schedule_action(
@@ -674,7 +701,7 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
             ok, detail = web.state.backend.run_now(parsed_date)
             return _redirect("/", detail, "success" if ok else "warning")
         except Exception as exc:
-            return _redirect("/", f"立即运行失败：{exc}", "error")
+            return _redirect("/", f"生成日报失败：{exc}", "error")
 
     @web.post("/actions/save-advanced")
     def save_advanced(yaml_text: str = Form(...)):
@@ -682,14 +709,14 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
             detail = web.state.backend.save_advanced_yaml(yaml_text)
             return _redirect("/settings", detail, "success")
         except Exception as exc:
-            return _redirect("/settings", f"保存高级配置失败：{exc}", "error")
+            return _redirect("/settings", f"保存高级设置失败：{exc}", "error")
 
     @web.get("/briefings/latest")
     def latest_briefing():
         context = web.state.backend.build_home_context()
         briefings = context["recent_briefings"]
         if not briefings:
-            return _redirect("/", "还没有生成过日报。", "warning")
+            return _redirect("/", "还没有生成过日报", "warning")
         latest = briefings[0]
         return RedirectResponse(url=f"/briefings/{latest.date_text}", status_code=303)
 
@@ -707,9 +734,11 @@ def create_app(*, config_path: Path | None = None, backend: DashboardBackend | N
                 "briefing_date": briefing_date,
                 "briefing_path": str(file_path),
                 "content": content,
+                "briefing_html": _render_markdown(content),
                 "theme_state": _build_theme_state(),
                 "about_modal": _build_about_modal(),
                 "app_version": __version__,
+                "app_version_display": _display_version(__version__),
             },
         )
 

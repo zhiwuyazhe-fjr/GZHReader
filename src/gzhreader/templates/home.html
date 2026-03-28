@@ -17,16 +17,24 @@
             <button class="secondary" type="submit">打开公众号后台</button>
           </form>
           <a class="button secondary" href="/settings">进入设置</a>
+          <button class="button secondary" type="button" data-open-dialog="run-date-dialog">生成特定日期</button>
         </div>
       </div>
       <aside class="summary-card">
         <div class="summary-label">今日状态</div>
         <div class="summary-value">{{ home_summary.status_label }}</div>
-        <div class="summary-detail">
-          聚合源：{{ status.source.detail }}<br>
-          服务状态：{{ status.service.web_detail }}<br>
-          AI 状态：{{ status.llm.detail }}
-        </div>
+        <div class="summary-detail">{{ home_summary.service_summary }}<br>{{ home_summary.source_summary }}<br>{{ home_summary.llm_summary }}</div>
+        <details class="detail-disclosure">
+          <summary>
+            <span class="summary-label">查看详情</span>
+            <span class="detail-disclosure-toggle" data-closed-label="展开" data-open-label="收起" aria-hidden="true"></span>
+          </summary>
+          <div class="disclosure-body">
+            <div class="status-detail">聚合源：{{ status.source.detail }}</div>
+            <div class="status-detail">服务状态：{{ status.service.web_detail }}</div>
+            <div class="status-detail">AI 状态：{{ status.llm.detail }}</div>
+          </div>
+        </details>
       </aside>
     </div>
   </section>
@@ -36,7 +44,7 @@
       <div class="panel-header">
         <div>
           <h2 class="panel-title">最近日报</h2>
-          <div class="panel-copy">像期刊目录一样浏览最近生成的日报，检查今天的整理是否已经成刊。</div>
+          <div class="panel-copy">像期刊目录一样浏览最近生成的日报</div>
         </div>
         <a class="button secondary" href="/briefings/latest">打开最新一份</a>
       </div>
@@ -50,44 +58,62 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="empty-state">
-          还没有生成过日报。先确认公众号服务已经启动并能读取聚合源，然后点击上面的“立即生成今天”。
-        </div>
+        <div class="empty-state">还没有生成过日报 先检查账号状态和订阅刷新情况 再点上面的立即生成今天</div>
       {% endif %}
     </div>
 
     <div class="panel">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">系统摘要</h2>
-          <div class="panel-copy">首页只保留真正影响今天工作的状态，其余配置统一收进设置页。</div>
+          <h2 class="panel-title">当前情况</h2>
+          <div class="panel-copy">常用状态先放在这里 需要时再展开看看</div>
         </div>
       </div>
       <div class="status-list">
         <div class="status-item">
-          <strong>公众号服务</strong>
-          <span class="status-pill {{ 'ok' if status.service.web_ok else 'bad' }}">{{ '可用' if status.service.web_ok else '未就绪' }}</span>
-          <div class="status-detail">{{ status.service.runtime_detail }}<br>{{ status.service.process_detail }}<br>{{ status.service.web_detail }}</div>
+          <strong>公众号后台</strong>
+          <span class="status-pill {{ 'ok' if status.service.web_ok else 'warn' }}">{{ '已就绪' if status.service.web_ok else '准备中' }}</span>
+          <div class="status-detail">{{ home_summary.service_summary }}</div>
+          <details class="detail-disclosure">
+            <summary>
+              <span class="summary-label">查看详情</span>
+              <span class="detail-disclosure-toggle" data-closed-label="展开" data-open-label="收起" aria-hidden="true"></span>
+            </summary>
+            <div class="disclosure-body">
+              <div class="status-detail">{{ status.service.runtime_detail }}</div>
+              <div class="status-detail">{{ status.service.process_detail }}</div>
+              <div class="status-detail">{{ status.service.web_detail }}</div>
+            </div>
+          </details>
         </div>
         <div class="status-item">
-          <strong>AI 摘要</strong>
+          <strong>AI 模型</strong>
           <span class="status-pill {{ 'ok' if status.llm.configured else 'warn' }}">{{ '已配置' if status.llm.configured else '待配置' }}</span>
-          <div class="status-detail">{{ status.llm.detail }}</div>
+          <div class="status-detail">{{ home_summary.llm_summary }}</div>
+          <details class="detail-disclosure">
+            <summary>
+              <span class="summary-label">查看详情</span>
+              <span class="detail-disclosure-toggle" data-closed-label="展开" data-open-label="收起" aria-hidden="true"></span>
+            </summary>
+            <div class="disclosure-body">
+              <div class="status-detail">{{ status.llm.detail }}</div>
+            </div>
+          </details>
         </div>
         <div class="status-item">
           <strong>自动运行</strong>
           <span class="status-pill {{ 'ok' if status.schedule.installed else 'warn' }}">{{ '已开启' if status.schedule.installed else '未开启' }}</span>
-          <div class="status-detail">{{ status.schedule.detail }}<br>{{ status.schedule.daily_limit_label }}</div>
-        </div>
-        <div class="status-item">
-          <strong>输出目录</strong>
-          <div class="status-detail">{{ settings_snapshot.output_dir }}</div>
-          <div class="inline-actions">
-            <form method="post" action="/actions/open-output-dir">
-              <button class="secondary" type="submit">打开目录</button>
-            </form>
-            <a class="button secondary" href="/settings">调整设置</a>
-          </div>
+          <div class="status-detail">{{ status.schedule.detail }}</div>
+          <details class="detail-disclosure">
+            <summary>
+              <span class="summary-label">查看详情</span>
+              <span class="detail-disclosure-toggle" data-closed-label="展开" data-open-label="收起" aria-hidden="true"></span>
+            </summary>
+            <div class="disclosure-body">
+              <div class="status-detail">{{ status.schedule.daily_limit_label }}</div>
+              <div class="status-detail">{{ settings_snapshot.output_dir }}</div>
+            </div>
+          </details>
         </div>
       </div>
     </div>
@@ -96,23 +122,38 @@
   <section class="panel">
     <div class="panel-header">
       <div>
-        <h2 class="panel-title">今日工作提示</h2>
-        <div class="panel-copy">不再用锁死式向导逼着你按步骤点击，而是只保留当前最值得处理的下一步。</div>
+        <h2 class="panel-title">今日工作提醒</h2>
+        <div class="panel-copy">先看账号状态 再确认订阅刷新 最后生成日报</div>
       </div>
     </div>
     <div class="snapshot-list">
-      <div class="snapshot-item">
-        <div class="snapshot-label">如果服务还没启动</div>
-        <div class="snapshot-value">去设置页启动本地公众号服务，然后打开后台扫码登录微信。</div>
-      </div>
-      <div class="snapshot-item">
-        <div class="snapshot-label">如果聚合源还不可读</div>
-        <div class="snapshot-value">在后台确认账号在线、订阅列表正常，然后点击“更新全部”。</div>
-      </div>
-      <div class="snapshot-item">
-        <div class="snapshot-label">如果 AI 还没配置</div>
-        <div class="snapshot-value">进入设置页完成 base URL、model、API key 配置，并做一次连通性测试。</div>
-      </div>
+      {% for item in today_reminders %}
+        <div class="status-item">
+          <div class="snapshot-label">{{ item.label }}</div>
+          <div class="snapshot-value">{{ item.detail }}</div>
+        </div>
+      {% endfor %}
     </div>
   </section>
+
+  <dialog id="run-date-dialog" class="about-dialog">
+    <div class="about-dialog-card">
+      <div class="about-dialog-head">
+        <div class="about-dialog-brand-copy">
+          <div class="about-dialog-title">生成特定日期</div>
+          <div class="about-dialog-copy">选一天，帮你重新生成那一天的日报</div>
+        </div>
+        <form method="dialog"><button class="button secondary" type="submit">关闭</button></form>
+      </div>
+      <form method="post" action="/actions/run-now" class="settings-grid">
+        <div class="field">
+          <label>日期</label>
+          <input type="date" name="target_date" value="{{ today }}">
+        </div>
+        <div class="inline-actions">
+          <button class="primary" type="submit">开始生成</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
 {% endblock %}

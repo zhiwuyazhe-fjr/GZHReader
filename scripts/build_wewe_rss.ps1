@@ -99,13 +99,6 @@ if ($LASTEXITCODE -gt 7) {
     throw "Failed to copy third_party/wewe-rss into the staging directory."
 }
 
-$sqlitePrismaDir = Join-Path $stagingDir "apps\server\prisma-sqlite"
-$serverPrismaDir = Join-Path $stagingDir "apps\server\prisma"
-if (Test-Path $serverPrismaDir) {
-    Remove-Item $serverPrismaDir -Recurse -Force
-}
-Copy-Item $sqlitePrismaDir $serverPrismaDir -Recurse -Force
-
 $envVars = @{
     "DATABASE_URL" = "file:../data/wewe-rss.db"
     "DATABASE_TYPE" = "sqlite"

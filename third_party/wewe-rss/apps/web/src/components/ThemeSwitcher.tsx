@@ -1,4 +1,5 @@
 import { useTheme } from 'next-themes';
+import { readThemePreference, writeThemePreference } from '@web/utils/themeSync';
 
 const options = [
   { value: 'system', label: '跟随系统' },
@@ -8,7 +9,10 @@ const options = [
 
 export function ThemeSwitcher() {
   const { setTheme, theme } = useTheme();
-  const currentTheme = theme || 'system';
+  const currentTheme = (theme || readThemePreference()) as
+    | 'system'
+    | 'light'
+    | 'dark';
 
   return (
     <div className="rss-theme-switch" role="group" aria-label="切换主题">
@@ -20,7 +24,10 @@ export function ThemeSwitcher() {
             type="button"
             className={`rss-theme-option${active ? ' is-active' : ''}`}
             aria-pressed={active}
-            onClick={() => setTheme(option.value)}
+            onClick={() => {
+              writeThemePreference(option.value);
+              setTheme(option.value);
+            }}
           >
             {option.label}
           </button>

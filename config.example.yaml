@@ -7,8 +7,6 @@ source:
 rss_service:
   mode: bundled_wewe_rss
   base_url: http://127.0.0.1:4000
-  # AUTH_CODE 是进入本地公众号服务后台的访问码，不是微信密码。
-  auth_code: "123567"
   port: 4000
   host: 127.0.0.1
   data_dir: ./.runtime/wewe-rss/data
@@ -39,7 +37,7 @@ llm:
   base_url: https://api.openai.com/v1
   api_key: ""
   model: gpt-4o-mini
-  timeout_seconds: 45
+  timeout_seconds: 90
   retries: 2
   temperature: 0.2
 

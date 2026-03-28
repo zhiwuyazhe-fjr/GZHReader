@@ -3,10 +3,10 @@
 {% block content %}
   <article class="paper">
     <div class="paper-meta">
-      <div class="eyebrow">每日简报</div>
+      <div class="eyebrow">每日日报</div>
       <h1>{{ briefing_date }}</h1>
-      <div>文件位置：{{ briefing_path }}</div>
+      <div>{{ briefing_path }}</div>
     </div>
-    <pre>{{ content }}</pre>
+    <div class="paper-content">{{ briefing_html | safe }}</div>
   </article>
 {% endblock %}

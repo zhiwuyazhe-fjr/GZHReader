@@ -183,7 +183,7 @@ class LLMConfig(StrictBaseModel):
     base_url: str = "https://api.openai.com/v1"
     api_key: str = ""
     model: str = "gpt-4o-mini"
-    timeout_seconds: int = 45
+    timeout_seconds: int = 90
     retries: int = 2
     temperature: float = 0.2
 

@@ -2,7 +2,6 @@ import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useNavigate, useParams } from 'react-router-dom';
-import { serverOriginUrl } from '@web/utils/env';
 import { trpc } from '@web/utils/trpc';
 import ArticleList from './list';
 
@@ -25,7 +24,7 @@ type RefreshResult = {
 
 const refreshSummaryText = (result?: RefreshResult) => {
   if (!result) {
-    return '刷新已经完成';
+    return '这轮刷新已经完成';
   }
 
   const refreshedCount = result.refreshedCount ?? 0;
@@ -34,7 +33,7 @@ const refreshSummaryText = (result?: RefreshResult) => {
     typeof result.budgetRemaining === 'number'
       ? `，剩余预算 ${result.budgetRemaining} 次`
       : '';
-  const reason = result.reason ? `。${result.reason}` : '';
+  const reason = result.reason ? `，${result.reason}` : '';
 
   return `本轮处理 ${refreshedCount} / ${totalCount} 个订阅${budgetRemaining}${reason}`;
 };
@@ -110,9 +109,8 @@ const Feeds = () => {
     for (const link of links) {
       const result = await getMpInfo({ wxsLink: link });
       if (!result[0]) {
-        toast.error('这条分享链接没有识别成功', {
-          description:
-            '请确认它来自公众号文章页，并且完整复制了 https://mp.weixin.qq.com/s/... 链接',
+        toast.error('这条链接没有识别成功', {
+          description: '请确认它来自公众号文章页',
         });
         continue;
       }
@@ -131,8 +129,8 @@ const Feeds = () => {
         mpId: item.id,
       })) as RefreshResult;
 
-      toast.success('订阅已经加入并完成首轮刷新', {
-        description: `${item.name}。${refreshSummaryText(refreshResult)}`,
+      toast.success('订阅已经接入', {
+        description: `${item.name}，${refreshSummaryText(refreshResult)}`,
       });
     }
 
@@ -140,30 +138,6 @@ const Feeds = () => {
     await refetchFeedList();
     setWxsLink('');
     setIsModalOpen(false);
-  };
-
-  const exportOpml = () => {
-    if (!items.length) {
-      toast.error('还没有可导出的订阅源');
-      return;
-    }
-
-    let opmlContent = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-    opmlContent += `<opml version="2.0">\n<head>\n<title>GZHReader 公众号后台订阅</title>\n</head>\n<body>\n`;
-    items.forEach((sub) => {
-      opmlContent += `  <outline text="${sub.mpName}" type="rss" xmlUrl="${serverOriginUrl}/feeds/${sub.id}.atom" htmlUrl="${serverOriginUrl}/feeds/${sub.id}.atom" />\n`;
-    });
-    opmlContent += `</body>\n</opml>`;
-
-    const blob = new Blob([opmlContent], {
-      type: 'text/xml;charset=utf-8;',
-    });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'gzhreader-feeds.opml';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   const refreshCurrentFeed = async () => {
@@ -186,7 +160,7 @@ const Feeds = () => {
     await refetchFeedList();
     await utils.article.list.reset();
     toast.success(
-      result?.completed === false ? '本轮刷新已按预算暂停' : '订阅列表已经刷新',
+      result?.completed === false ? '这轮刷新已经先暂停' : '订阅列表已经刷新',
       {
         description: refreshSummaryText(result),
       },
@@ -199,7 +173,7 @@ const Feeds = () => {
     }
     if (inProgressHistoryMp?.id === currentMpInfo.id) {
       await getHistoryArticles({ mpId: '' });
-      toast.success('历史抓取已停止');
+      toast.success('历史抓取已经停止');
     } else {
       await getHistoryArticles({ mpId: currentMpInfo.id });
       toast.success('历史抓取已经开始');
@@ -223,12 +197,13 @@ const Feeds = () => {
     <>
       <section className="rss-panel-hero rss-hero-grid">
         <div className="rss-hero-copy">
-          <div className="rss-eyebrow">订阅编辑台</div>
-          <h1 className="rss-title">把公众号更新收进一张更安静的编辑桌</h1>
+          <div className="rss-eyebrow">订阅工作台</div>
+          <h1 className="rss-title rss-title--single-line">
+            把公众号更新整理进同一张编辑桌
+          </h1>
           <div className="rss-rule" />
           <p className="rss-copy">
-            这里负责订阅接入、文章刷新和聚合导出。新的刷新逻辑会优先保护账号健康，
-            当预算到顶时自动分批，不再为了刷完一轮而把账号硬推到失效。
+            在这里接入订阅 刷新文章 然后把每天的内容收进日报里
           </p>
           <div className="rss-actions">
             <button
@@ -246,21 +221,6 @@ const Feeds = () => {
             >
               {isRefreshAllRunning || isRefreshLoading ? '更新全部中' : '更新全部'}
             </button>
-            <a
-              className="rss-button is-secondary"
-              href={`${serverOriginUrl}/feeds/all.atom`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              打开聚合 Atom
-            </a>
-            <button
-              type="button"
-              className="rss-button is-secondary"
-              onClick={exportOpml}
-            >
-              导出 OPML
-            </button>
           </div>
         </div>
         <aside className="rss-hero-side">
@@ -273,9 +233,9 @@ const Feeds = () => {
             <div className="rss-stat-copy">{lastUpdatedLabel}</div>
           </div>
           <div className="rss-note">
-            <strong>额度规则</strong>
+            刷新会自动分批进行
             <br />
-            每个账号每天最多 50 次，请求总预算达到 280 次后会自动暂停，剩余内容留到下一轮继续。
+            额度紧张时会先保护账号状态
           </div>
         </aside>
       </section>
@@ -287,7 +247,7 @@ const Feeds = () => {
               <h2 className="rss-panel-title">订阅目录</h2>
               <p className="rss-panel-copy">
                 共 {totalFeeds} 个订阅
-                {isFeedLoading ? '，目录更新中' : '，点击即可查看细节'}
+                {isFeedLoading ? '，目录更新中' : '，点开就能查看详情'}
               </p>
             </div>
           </div>
@@ -300,20 +260,18 @@ const Feeds = () => {
                 navigate('/feeds');
               }}
             >
-              <div className="rss-feed-avatar rss-feed-avatar--placeholder">
-                全
-              </div>
+              <div className="rss-feed-avatar rss-feed-avatar--placeholder">全</div>
               <div className="rss-stack">
                 <div className="rss-feed-name">全部订阅</div>
                 <div className="rss-feed-intro">
-                  在这里统一刷新、打开聚合 Atom，或检查所有文章的收录情况。
+                  在这里统一查看和刷新已经接入的公众号
                 </div>
               </div>
             </button>
 
             {!items.length ? (
               <div className="rss-empty">
-                还没有订阅源。粘贴一条公众号文章分享链接，就能把对应公众号接进后台。
+                还没有订阅源 先粘贴一条公众号文章链接试试
               </div>
             ) : (
               items.map((item) => (
@@ -342,7 +300,7 @@ const Feeds = () => {
                   <div className="rss-stack">
                     <div className="rss-feed-name">{item.mpName}</div>
                     <div className="rss-feed-intro">
-                      {item.mpIntro || '已接入聚合源，点开可以继续刷新和查看文章列表'}
+                      {item.mpIntro || '已经接入 现在可以继续刷新和查看文章'}
                     </div>
                   </div>
                 </button>
@@ -360,8 +318,9 @@ const Feeds = () => {
                 </h2>
                 <p className="rss-panel-copy">
                   {currentMpInfo
-                    ? currentMpInfo.mpIntro || '当前订阅的刷新、历史抓取与文章入口'
-                    : '查看整体聚合结果，或从这里触发预算内的批量刷新'}
+                    ? currentMpInfo.mpIntro ||
+                      '在这里刷新当前订阅，或继续查看文章列表'
+                    : '在这里统一刷新订阅，并查看今天收进来的文章'}
                 </p>
               </div>
               <div className="rss-actions">
@@ -387,14 +346,6 @@ const Feeds = () => {
                           : '补抓历史文章'}
                       </button>
                     )}
-                    <a
-                      className="rss-button is-secondary"
-                      href={`${serverOriginUrl}/feeds/${currentMpInfo.id}.atom`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      打开该订阅 Atom
-                    </a>
                     <button
                       type="button"
                       className="rss-button is-danger"
@@ -405,34 +356,24 @@ const Feeds = () => {
                     </button>
                   </>
                 ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="rss-button is-primary"
-                      disabled={Boolean(isRefreshAllRunning) || isRefreshLoading}
-                      onClick={refreshAllFeeds}
-                    >
-                      {isRefreshAllRunning || isRefreshLoading
-                        ? '更新全部中'
-                        : '刷新全部订阅'}
-                    </button>
-                    <a
-                      className="rss-button is-secondary"
-                      href={`${serverOriginUrl}/feeds/all.atom`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      打开聚合 Atom
-                    </a>
-                  </>
+                  <button
+                    type="button"
+                    className="rss-button is-primary"
+                    disabled={Boolean(isRefreshAllRunning) || isRefreshLoading}
+                    onClick={refreshAllFeeds}
+                  >
+                    {isRefreshAllRunning || isRefreshLoading
+                      ? '更新全部中'
+                      : '刷新全部订阅'}
+                  </button>
                 )}
               </div>
             </div>
 
             <div className="rss-note">
               {currentMpInfo
-                ? `最近更新时间：${lastUpdatedLabel}`
-                : '当总预算接近上限时，系统会自动暂停本轮刷新，并把剩余内容留到下一轮继续处理。'}
+                ? `最近更新时间 ${lastUpdatedLabel}`
+                : '刷新会自动分批处理 先保证账号健康状态'}
             </div>
           </article>
 
@@ -441,7 +382,7 @@ const Feeds = () => {
               <div>
                 <h2 className="rss-panel-title">文章列表</h2>
                 <p className="rss-panel-copy">
-                  文章会按发布时间倒序显示，方便快速确认最新抓取结果。
+                  文章会按发布时间倒序显示 方便你快速确认最新抓取结果
                 </p>
               </div>
             </div>
@@ -461,7 +402,7 @@ const Feeds = () => {
                 <div className="rss-eyebrow">接入入口</div>
                 <h2 className="rss-modal-title">添加新的公众号订阅</h2>
                 <p className="rss-panel-copy">
-                  粘贴公众号文章分享链接，后台会自动识别所属公众号并接入聚合源。可以一次粘贴多条，每行一条。
+                  粘贴公众号文章分享链接 后台会自动识别并接入订阅
                 </p>
               </div>
               <button

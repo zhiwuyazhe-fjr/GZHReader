@@ -159,8 +159,6 @@ wewe_rss:
   enabled: true
   base_url: http://localhost:4100
   auth_code: '123567'
-  service_dir: ./infra/wewe-rss
-  compose_variant: mysql
   port: 4100
 llm:
   base_url: https://example.com/v1

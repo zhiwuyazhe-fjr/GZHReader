@@ -26,9 +26,7 @@ const AccountPage = () => {
     });
 
   const { data: loginResult } = trpc.platform.getLoginResult.useQuery(
-    {
-      id: loginData?.uuid ?? '',
-    },
+    { id: loginData?.uuid ?? '' },
     {
       enabled: !!loginData?.uuid,
       refetchIntervalInBackground: false,
@@ -41,7 +39,7 @@ const AccountPage = () => {
             token: result.token,
           });
           toast.success('账号已经加入后台', {
-            description: `${name} 可以开始为订阅刷新提供额度`,
+            description: `${name} 现在可以参与刷新`,
           });
           setIsModalOpen(false);
           setCountdown(0);
@@ -99,21 +97,20 @@ const AccountPage = () => {
       <section className="rss-panel-hero rss-hero-grid">
         <div className="rss-hero-copy">
           <div className="rss-eyebrow">账号池</div>
-          <h1 className="rss-title">用更稳的账号池承接每天的刷新预算</h1>
+          <h1 className="rss-title rss-title--single-line">
+            展示账号的健康状态 冷却原因和恢复入口
+          </h1>
           <div className="rss-rule" />
-          <p className="rss-copy">
-            这里不再只告诉你账号是不是存在，而是直接展示每个账号的真实健康状态、冷却原因和恢复入口。
-            单次 401 不会再被立即误判成失效，整体调度也会优先保护可用额度。
-          </p>
+          <p className="rss-copy">先看账号状态 再决定今天该不该刷新订阅</p>
           <div className="rss-actions">
             <button
               type="button"
-              className="rss-button is-primary"
+              className="rss-button is-primary is-large"
               onClick={openLoginModal}
             >
-              添加读书账号
+              增加读书账号
             </button>
-            <a className="rss-button is-secondary" href="/dash/feeds">
+            <a className="rss-button is-secondary is-large" href="/dash/feeds">
               前往订阅源
             </a>
           </div>
@@ -132,9 +129,9 @@ const AccountPage = () => {
             <div className="rss-stat-copy">{reloginCount} 个</div>
           </div>
           <div className="rss-note">
-            <strong>使用提醒</strong>
+            登录微信读书时不要勾选 24 小时后自动退出
             <br />
-            登录微信读书时不要勾选“24 小时后自动退出”。新调度会先冷却、再判断是否需要重登。
+            这样更不容易掉线
           </div>
         </aside>
       </section>
@@ -144,7 +141,7 @@ const AccountPage = () => {
           <div>
             <h2 className="rss-panel-title">账号列表</h2>
             <p className="rss-panel-copy">
-              可用、冷却中、待重登和禁用都会直接显示在一行里，方便判断下一步是继续刷新还是重新扫码。
+              可用 冷却中 待重登 和禁用都会直接显示在这里
             </p>
           </div>
           <div className="rss-meta">
@@ -158,7 +155,7 @@ const AccountPage = () => {
         <div className="rss-stack">
           {!items.length ? (
             <div className="rss-empty">
-              还没有接入任何读书账号。点上面的“添加读书账号”，扫码后就能开始为订阅刷新提供额度。
+              还没有接入任何读书账号 点上面的增加读书账号试试
             </div>
           ) : (
             items.map((item: any) => (
@@ -214,7 +211,7 @@ const AccountPage = () => {
                           id: item.id,
                           data: { status: value },
                         }).then(async () => {
-                          toast.success('账号状态已更新');
+                          toast.success('账号状态已经更新');
                           await utils.account.list.reset();
                           refetch();
                         });
@@ -252,7 +249,7 @@ const AccountPage = () => {
                 <div className="rss-eyebrow">扫码恢复</div>
                 <h2 className="rss-modal-title">添加或恢复读书账号</h2>
                 <p className="rss-panel-copy">
-                  扫码成功后，账号会立刻加入调度。新的调度策略会把短暂异常先放进冷却，而不是马上判成失效。
+                  扫码成功后 账号会立刻加入调度里
                 </p>
               </div>
               <button

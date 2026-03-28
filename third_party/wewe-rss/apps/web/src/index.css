@@ -167,7 +167,7 @@ select {
 }
 
 .rss-brand-subtitle {
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.75;
   color: var(--rss-text-soft);
 }
@@ -206,6 +206,13 @@ select {
     border-color 180ms ease,
     background-color 180ms ease,
     color 180ms ease;
+}
+
+.rss-button.is-large {
+  min-height: 50px;
+  padding: 0 22px;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .rss-nav-link:hover,
@@ -348,9 +355,13 @@ select {
 .rss-title {
   margin: 0;
   font-family: var(--rss-display);
-  font-size: clamp(32px, 3.3vw, 44px);
+  font-size: clamp(30px, 3vw, 40px);
   line-height: 1.05;
   letter-spacing: -0.045em;
+}
+
+.rss-title--single-line {
+  white-space: nowrap;
 }
 
 .rss-copy {
@@ -388,7 +399,7 @@ select {
 
 .rss-panel-copy {
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.85;
   color: var(--rss-text-soft);
   max-width: 52ch;
@@ -403,7 +414,7 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 12px 18px;
-  font-size: 15px;
+  font-size: 16px;
   color: var(--rss-text-soft);
 }
 
@@ -474,7 +485,7 @@ select {
 }
 
 .rss-feed-intro {
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.8;
   color: var(--rss-text-muted);
 }
@@ -567,7 +578,7 @@ select {
 
 .rss-note {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.8;
   color: var(--rss-text-soft);
 }
@@ -616,7 +627,7 @@ select {
 }
 
 .rss-stat-copy {
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.75;
   color: var(--rss-text-soft);
 }
@@ -839,6 +850,10 @@ select {
 
   .rss-title {
     font-size: clamp(30px, 9vw, 40px);
+  }
+
+  .rss-title--single-line {
+    white-space: normal;
   }
 }
 

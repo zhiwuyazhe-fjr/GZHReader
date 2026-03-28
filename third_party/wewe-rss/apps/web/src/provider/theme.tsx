@@ -1,6 +1,37 @@
 import { NextUIProvider } from '@nextui-org/react';
 import { ThemeProvider as NextThemesProvider } from 'next-themes';
+import { useTheme } from 'next-themes';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { readThemePreference, themeStorageKey } from '@web/utils/themeSync';
+
+function SharedThemeBridge() {
+  const { setTheme } = useTheme();
+
+  useEffect(() => {
+    const syncTheme = () => {
+      setTheme(readThemePreference());
+    };
+
+    syncTheme();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) {
+        syncTheme();
+      }
+    }, 1200);
+
+    window.addEventListener('focus', syncTheme);
+    document.addEventListener('visibilitychange', syncTheme);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', syncTheme);
+      document.removeEventListener('visibilitychange', syncTheme);
+    };
+  }, [setTheme]);
+
+  return null;
+}
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -9,11 +40,12 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
     <NextUIProvider navigate={navigate}>
       <NextThemesProvider
         attribute="data-theme"
-        defaultTheme="system"
+        defaultTheme={readThemePreference()}
         enableSystem
-        storageKey="gzhreader.theme"
+        storageKey={themeStorageKey}
         disableTransitionOnChange
       >
+        <SharedThemeBridge />
         {children}
       </NextThemesProvider>
     </NextUIProvider>

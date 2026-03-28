@@ -57,8 +57,7 @@ def get_schedule_status(task_name: str = TASK_NAME) -> tuple[bool, str]:
         **hidden_process_kwargs(),
     )
     if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout or "task query failed").strip()
-        return False, f"not installed: {detail}"
+        return False, "还没有开启每日自动整理"
 
     lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
     next_run = next(
@@ -77,7 +76,9 @@ def get_schedule_status(task_name: str = TASK_NAME) -> tuple[bool, str]:
         ),
         "unknown",
     )
-    detail = f"task installed: {status}"
+    detail = "已经开启每日自动整理"
     if next_run:
-        detail += f"; next run: {next_run}"
+        detail += f"，下一次 {next_run}"
+    elif status and status != "unknown":
+        detail += f"，当前状态 {status}"
     return True, detail
