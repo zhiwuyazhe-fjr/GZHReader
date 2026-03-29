@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Render, Response } from '@nestjs/common';
+import { Controller, Get, Param, Post, Render, Response } from '@nestjs/common';
 import { AppService } from './app.service';
 import { ConfigService } from '@nestjs/config';
 import { ConfigurationType } from './configuration';
@@ -36,9 +36,29 @@ export class AppController {
     res.sendFile(join(__dirname, '..', 'client', 'gzhreader-icon.svg'));
   }
 
-  @Get('/dash*')
+  @Get('/healthz')
+  healthz() {
+    return { ok: true, service: 'wewe-rss' };
+  }
+
+  @Get('dash/assets/:asset')
+  getDashAsset(@Param('asset') asset: string, @Response() res: Res) {
+    res.sendFile(join(__dirname, '..', 'client', 'assets', asset));
+  }
+
+  @Get('/dash')
   @Render('index.hbs')
   dashRender() {
+    return this.buildDashViewModel();
+  }
+
+  @Get('/dash/:page')
+  @Render('index.hbs')
+  dashSubpageRender() {
+    return this.buildDashViewModel();
+  }
+
+  private buildDashViewModel() {
     const { originUrl: weweRssServerOriginUrl } =
       this.configService.get<ConfigurationType['feed']>('feed')!;
     const { code } = this.configService.get<ConfigurationType['auth']>('auth')!;

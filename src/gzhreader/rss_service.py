@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -24,6 +25,8 @@ from .runtime_paths import (
 
 LOCAL_ACCOUNT_TOKEN_PREFIX = "gzh_local_"
 RECONNECT_MESSAGE = "删除账号后重新扫码登录"
+WEWE_RSS_HEALTH_SERVICE_NAME = "wewe-rss"
+PORT_SCAN_LIMIT = 20
 
 
 @dataclass(slots=True)
@@ -65,6 +68,10 @@ class BundledRSSServiceManager:
     @property
     def bridge_url(self) -> str:
         return f"http://127.0.0.1:{self.config.bridge_port}"
+
+    @property
+    def health_url(self) -> str:
+        return f"{self.config.base_url.rstrip('/')}/healthz"
 
     def status_snapshot(self) -> RSSServiceRuntimeStatus:
         runtime_ok, runtime_detail = self.check_runtime()
@@ -115,11 +122,7 @@ class BundledRSSServiceManager:
         return False, "本地公众号服务尚未启动"
 
     def check_service(self) -> tuple[bool, str]:
-        try:
-            response = httpx.get(self.config.base_url, timeout=5.0, follow_redirects=True)
-        except Exception as exc:
-            return False, f"服务暂时不可访问：{exc}"
-        return True, f"服务可访问，HTTP {response.status_code}"
+        return self._probe_service_health(timeout_seconds=5.0)
 
     def start(self) -> str:
         runtime_ok, runtime_detail = self.check_runtime()
@@ -128,6 +131,8 @@ class BundledRSSServiceManager:
 
         if self._check_http_ok():
             return "本地公众号服务已经在运行"
+
+        port_switch_detail = self._ensure_service_port_available()
 
         runtime_root = self._resolve_runtime_root()
         if runtime_root is None:
@@ -167,10 +172,13 @@ class BundledRSSServiceManager:
         self._write_pid(process.pid)
         if not self._wait_until_ready(timeout_seconds=15.0):
             self._stop_bridge()
+            self._remove_pid_file()
             if process.poll() is not None:
                 raise RuntimeError(f"服务启动失败，退出码={process.returncode}。请查看日志：{log_file}")
             raise RuntimeError(f"服务启动超时。请查看日志：{log_file}")
 
+        if port_switch_detail:
+            return f"{port_switch_detail}，本地公众号服务已启动：{self.config.base_url}"
         return f"本地公众号服务已启动：{self.config.base_url}"
 
     def stop(self) -> str:
@@ -199,6 +207,9 @@ class BundledRSSServiceManager:
         return "\n".join(snippet) if snippet else "暂无服务日志"
 
     def open_admin(self, *, return_to: str = "") -> str:
+        if not self._check_http_ok():
+            self.start()
+
         target_url = self.admin_url
         if return_to.strip():
             parsed = urlsplit(target_url)
@@ -254,6 +265,16 @@ class BundledRSSServiceManager:
             "PLATFORM_URL": self.bridge_url,
         }
 
+    def _browser_host(self) -> str:
+        host = self.config.host.strip()
+        if host in {"", "0.0.0.0", "::"}:
+            return "127.0.0.1"
+        return host
+
+    def _update_service_port(self, port: int) -> None:
+        self.config.port = port
+        self.config.base_url = f"http://{self._browser_host()}:{port}"
+
     def _resolve_runtime_root(self) -> Path | None:
         source = self.runtime_paths.bundled_wewe_rss_source_dir
         if not is_frozen_app() and self._resolve_server_root(source):
@@ -291,44 +312,82 @@ class BundledRSSServiceManager:
         return Path(system_node) if system_node else None
 
     def _apply_sqlite_migrations(self, server_root: Path, db_path: Path) -> None:
-        migrations_root = self._resolve_sqlite_migrations_root(server_root)
-        if not migrations_root.exists():
-            return
-
+        _ = server_root
         db_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(db_path) as connection:
-            connection.execute(
+            self._ensure_sqlite_table(
+                connection,
+                "accounts",
                 """
-                CREATE TABLE IF NOT EXISTS _gzhreader_sqlite_migrations (
-                    name TEXT PRIMARY KEY,
-                    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                CREATE TABLE IF NOT EXISTS accounts (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    token TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    status INTEGER NOT NULL DEFAULT 1,
+                    consecutive_auth_failures INTEGER NOT NULL DEFAULT 0,
+                    daily_request_count INTEGER NOT NULL DEFAULT 0,
+                    daily_request_date TEXT,
+                    cooldown_until INTEGER,
+                    last_error TEXT,
+                    last_success_at DATETIME,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-                """
+                """,
             )
-            applied = {
-                row[0]
-                for row in connection.execute(
-                    "SELECT name FROM _gzhreader_sqlite_migrations"
-                ).fetchall()
-            }
-
-            for migration_dir in sorted(migrations_root.iterdir()):
-                migration_sql = migration_dir / "migration.sql"
-                if not migration_dir.is_dir() or not migration_sql.exists():
-                    continue
-                if migration_dir.name in applied:
-                    continue
-
-                try:
-                    connection.executescript(migration_sql.read_text(encoding="utf-8"))
-                except sqlite3.OperationalError as exc:
-                    message = str(exc).lower()
-                    if "already exists" not in message and "duplicate column name" not in message:
-                        raise
-                connection.execute(
-                    "INSERT INTO _gzhreader_sqlite_migrations(name) VALUES (?)",
-                    (migration_dir.name,),
+            self._ensure_sqlite_table(
+                connection,
+                "feeds",
+                """
+                CREATE TABLE IF NOT EXISTS feeds (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    mp_name TEXT NOT NULL,
+                    mp_cover TEXT NOT NULL,
+                    mp_intro TEXT NOT NULL,
+                    status INTEGER NOT NULL DEFAULT 1,
+                    sync_time INTEGER NOT NULL DEFAULT 0,
+                    update_time INTEGER NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    has_history INTEGER DEFAULT 1
                 )
+                """,
+            )
+            self._ensure_sqlite_table(
+                connection,
+                "articles",
+                """
+                CREATE TABLE IF NOT EXISTS articles (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    mp_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    pic_url TEXT NOT NULL,
+                    publish_time INTEGER NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+            )
+
+            self._ensure_sqlite_columns(
+                connection,
+                "accounts",
+                {
+                    "consecutive_auth_failures": "INTEGER NOT NULL DEFAULT 0",
+                    "daily_request_count": "INTEGER NOT NULL DEFAULT 0",
+                    "daily_request_date": "TEXT",
+                    "cooldown_until": "INTEGER",
+                    "last_error": "TEXT",
+                    "last_success_at": "DATETIME",
+                },
+            )
+            self._ensure_sqlite_columns(
+                connection,
+                "feeds",
+                {
+                    "has_history": "INTEGER DEFAULT 1",
+                },
+            )
             connection.commit()
 
     def _mark_legacy_accounts_for_reconnect(self, db_path: Path) -> None:
@@ -354,16 +413,34 @@ class BundledRSSServiceManager:
             )
             connection.commit()
 
-    def _resolve_sqlite_migrations_root(self, server_root: Path) -> Path:
-        direct = server_root / "prisma" / "migrations"
-        if direct.exists():
-            return direct
+    def _ensure_sqlite_table(self, connection: sqlite3.Connection, table_name: str, ddl: str) -> None:
+        existing_tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        if table_name in existing_tables:
+            return
+        connection.execute(ddl)
 
-        nested = server_root / "apps" / "server" / "prisma" / "migrations"
-        if nested.exists():
-            return nested
-
-        return direct
+    def _ensure_sqlite_columns(
+        self,
+        connection: sqlite3.Connection,
+        table_name: str,
+        columns: dict[str, str],
+    ) -> None:
+        existing_columns = {
+            row[1]
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        for column_name, column_definition in columns.items():
+            if column_name in existing_columns:
+                continue
+            connection.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+            )
+            existing_columns.add(column_name)
 
     def _wait_until_ready(self, timeout_seconds: float) -> bool:
         deadline = time.monotonic() + timeout_seconds
@@ -374,11 +451,50 @@ class BundledRSSServiceManager:
         return False
 
     def _check_http_ok(self) -> bool:
+        ok, _ = self._probe_service_health(timeout_seconds=1.5)
+        return ok
+
+    def _probe_service_health(self, *, timeout_seconds: float) -> tuple[bool, str]:
         try:
-            response = httpx.get(self.config.base_url, timeout=1.5, follow_redirects=True)
+            response = httpx.get(self.health_url, timeout=timeout_seconds, follow_redirects=True)
+        except Exception as exc:
+            return False, f"服务暂时不可访问：{exc}"
+
+        if response.status_code != 200:
+            return False, f"健康检查未通过，HTTP {response.status_code}"
+
+        try:
+            payload = response.json()
         except Exception:
-            return False
-        return response.status_code < 500
+            return False, "健康检查返回了非法响应"
+
+        if payload.get("ok") is not True or payload.get("service") != WEWE_RSS_HEALTH_SERVICE_NAME:
+            return False, "当前端口上的响应不是 GZHReader 公众号后台"
+
+        return True, "服务可访问，健康检查已通过"
+
+    def _can_bind_port(self, host: str, port: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((host, port))
+            except OSError:
+                return False
+        return True
+
+    def _ensure_service_port_available(self) -> str:
+        if self._can_bind_port(self.config.host, self.config.port):
+            return ""
+
+        original_port = self.config.port
+        for candidate in range(original_port + 1, original_port + PORT_SCAN_LIMIT):
+            if self._can_bind_port(self.config.host, candidate):
+                self._update_service_port(candidate)
+                return f"端口 {original_port} 已被其他程序占用，已自动切换到 {candidate}"
+
+        raise RuntimeError(
+            f"端口 {original_port} 已被占用，而且在 {original_port}-{original_port + PORT_SCAN_LIMIT - 1} 之间没找到可用端口。请在设置里改一个空闲端口后重试"
+        )
 
     def _check_bridge_ok(self) -> bool:
         try:

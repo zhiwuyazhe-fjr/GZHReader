@@ -19,6 +19,7 @@
 [Setup]
 AppId={{2DCCB9D3-EBF8-4A56-BE52-43B22EAE4A58}
 AppName={#MyAppName}
+AppVerName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
@@ -41,9 +42,16 @@ Name: "desktopicon"; Description: "Create desktop shortcut"; GroupDescription: "
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+Type: files; Name: "{group}\GZHReader Console.lnk"
+Type: files; Name: "{group}\GZHReader.lnk"
+Type: files; Name: "{autodesktop}\GZHReader Console.lnk"
+Type: files; Name: "{autoprograms}\GZHReader.lnk"
+Type: dirifempty; Name: "{group}"
+
 [Icons]
-Name: "{group}\GZHReader"; Filename: "{app}\GZHReader.exe"
-Name: "{autodesktop}\GZHReader"; Filename: "{app}\GZHReader.exe"; Tasks: desktopicon
+Name: "{autoprograms}\GZHReader"; Filename: "{app}\GZHReader.exe"; IconFilename: "{app}\GZHReader.exe"
+Name: "{autodesktop}\GZHReader"; Filename: "{app}\GZHReader.exe"; IconFilename: "{app}\GZHReader.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\GZHReader.exe"; Description: "Launch GZHReader"; Flags: nowait postinstall skipifsilent

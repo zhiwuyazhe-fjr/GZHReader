@@ -106,8 +106,12 @@ def schedule_remove_cmd() -> None:
 
 @service_app.command("start")
 def service_start(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
-    config_data = ensure_config(_resolve_cli_config_path(config))
-    typer.echo(BundledRSSServiceManager(config_data.rss_service).start())
+    config_path = _resolve_cli_config_path(config)
+    config_data = ensure_config(config_path)
+    manager = BundledRSSServiceManager(config_data.rss_service)
+    detail = manager.start()
+    _persist_service_config_if_changed(config_data, config_path)
+    typer.echo(detail)
 
 
 @service_app.command("stop")
@@ -118,8 +122,12 @@ def service_stop(config: Path | None = typer.Option(None, "--config", help="Conf
 
 @service_app.command("restart")
 def service_restart(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
-    config_data = ensure_config(_resolve_cli_config_path(config))
-    typer.echo(BundledRSSServiceManager(config_data.rss_service).restart())
+    config_path = _resolve_cli_config_path(config)
+    config_data = ensure_config(config_path)
+    manager = BundledRSSServiceManager(config_data.rss_service)
+    detail = manager.restart()
+    _persist_service_config_if_changed(config_data, config_path)
+    typer.echo(detail)
 
 
 @service_app.command("status")
@@ -141,8 +149,12 @@ def service_logs(config: Path | None = typer.Option(None, "--config", help="Conf
 
 @service_app.command("open-admin")
 def service_open_admin(config: Path | None = typer.Option(None, "--config", help="Config file path")) -> None:
-    config_data = ensure_config(_resolve_cli_config_path(config))
-    typer.echo(BundledRSSServiceManager(config_data.rss_service).open_admin())
+    config_path = _resolve_cli_config_path(config)
+    config_data = ensure_config(config_path)
+    manager = BundledRSSServiceManager(config_data.rss_service)
+    detail = manager.open_admin()
+    _persist_service_config_if_changed(config_data, config_path)
+    typer.echo(detail)
 
 
 @app.command("bridge-serve", hidden=True)
@@ -292,6 +304,12 @@ def _run_once(config_path: Path, target_date: date, feed_filter: str | None) -> 
         return
     typer.echo(detail)
     raise typer.Exit(code=1)
+
+
+def _persist_service_config_if_changed(config_data: AppConfig, config_path: Path) -> None:
+    if not config_data.source.url or config_data.source.url.endswith("/feeds/all.atom"):
+        config_data.source.url = f"{config_data.rss_service.base_url.rstrip('/')}/feeds/all.atom"
+    save_config(config_data, config_path)
 
 
 def build_doctor_checks(config_data: AppConfig) -> list[DoctorCheck]:

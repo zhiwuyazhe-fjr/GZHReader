@@ -69,22 +69,150 @@ def test_bundled_rss_manager_disables_auth_code_in_runtime_env(tmp_path) -> None
     assert env["PLATFORM_URL"] == "http://127.0.0.1:18765"
 
 
-def test_bundled_rss_manager_prefers_sqlite_migration_directory(tmp_path) -> None:
+def test_bundled_rss_manager_bootstraps_sqlite_schema_for_fresh_db(tmp_path) -> None:
     runtime_paths = _runtime_paths(tmp_path)
-    sqlite_migrations = runtime_paths.bundled_wewe_rss_runtime_dir / "apps" / "server" / "prisma" / "migrations"
-    sqlite_migrations.mkdir(parents=True, exist_ok=True)
+    runtime_paths.rss_service_data_dir.mkdir(parents=True, exist_ok=True)
+    db_path = runtime_paths.rss_service_data_dir / "wewe-rss.db"
 
     manager = BundledRSSServiceManager(
         RSSServiceConfig(
-            data_dir=str(tmp_path / "data"),
+            data_dir=str(runtime_paths.rss_service_data_dir),
             log_file=str(runtime_paths.rss_service_log_path),
         ),
         runtime_paths=runtime_paths,
     )
 
-    resolved = manager._resolve_sqlite_migrations_root(runtime_paths.bundled_wewe_rss_runtime_dir)
+    manager._apply_sqlite_migrations(runtime_paths.bundled_wewe_rss_runtime_dir, db_path)
 
-    assert resolved == sqlite_migrations
+    with rss_service_module.sqlite3.connect(db_path) as connection:
+        account_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(accounts)").fetchall()
+        }
+        feed_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(feeds)").fetchall()
+        }
+        article_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(articles)").fetchall()
+        }
+
+    assert {
+        "id",
+        "token",
+        "name",
+        "status",
+        "consecutive_auth_failures",
+        "daily_request_count",
+        "daily_request_date",
+        "cooldown_until",
+        "last_error",
+        "last_success_at",
+        "created_at",
+        "updated_at",
+    }.issubset(account_columns)
+    assert {
+        "id",
+        "mp_name",
+        "mp_cover",
+        "mp_intro",
+        "status",
+        "sync_time",
+        "update_time",
+        "created_at",
+        "updated_at",
+        "has_history",
+    }.issubset(feed_columns)
+    assert {
+        "id",
+        "mp_id",
+        "title",
+        "pic_url",
+        "publish_time",
+        "created_at",
+        "updated_at",
+    }.issubset(article_columns)
+
+
+def test_bundled_rss_manager_upgrades_existing_sqlite_schema(tmp_path) -> None:
+    runtime_paths = _runtime_paths(tmp_path)
+    runtime_paths.rss_service_data_dir.mkdir(parents=True, exist_ok=True)
+    db_path = runtime_paths.rss_service_data_dir / "wewe-rss.db"
+    with rss_service_module.sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                token TEXT NOT NULL,
+                name TEXT NOT NULL,
+                status INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE feeds (
+                id TEXT PRIMARY KEY,
+                mp_name TEXT NOT NULL,
+                mp_cover TEXT NOT NULL,
+                mp_intro TEXT NOT NULL,
+                status INTEGER NOT NULL DEFAULT 1,
+                sync_time INTEGER NOT NULL DEFAULT 0,
+                update_time INTEGER NOT NULL,
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO accounts(id, token, name, status)
+            VALUES ('1', 'legacy-remote-token', 'legacy', 1)
+            """
+        )
+        connection.commit()
+
+    manager = BundledRSSServiceManager(
+        RSSServiceConfig(
+            data_dir=str(runtime_paths.rss_service_data_dir),
+            log_file=str(runtime_paths.rss_service_log_path),
+        ),
+        runtime_paths=runtime_paths,
+    )
+
+    manager._apply_sqlite_migrations(runtime_paths.bundled_wewe_rss_runtime_dir, db_path)
+
+    with rss_service_module.sqlite3.connect(db_path) as connection:
+        account_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(accounts)").fetchall()
+        }
+        feed_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(feeds)").fetchall()
+        }
+        row = connection.execute(
+            """
+            SELECT consecutive_auth_failures, daily_request_count, daily_request_date,
+                   cooldown_until, last_error, last_success_at
+            FROM accounts
+            WHERE id = '1'
+            """
+        ).fetchone()
+
+    assert {
+        "consecutive_auth_failures",
+        "daily_request_count",
+        "daily_request_date",
+        "cooldown_until",
+        "last_error",
+        "last_success_at",
+    }.issubset(account_columns)
+    assert "has_history" in feed_columns
+    assert row == (0, 0, None, None, None, None)
 
 
 def test_bundled_rss_manager_prefers_source_runtime_in_dev(monkeypatch, tmp_path) -> None:
@@ -154,4 +282,51 @@ def test_bundled_rss_manager_marks_legacy_accounts_for_reconnect(tmp_path) -> No
             "SELECT status, consecutive_auth_failures, last_error FROM accounts WHERE id = '1'"
         ).fetchone()
 
-    assert row == (0, 3, "删除账号后重新扫码登录")
+    assert row == (0, 3, rss_service_module.RECONNECT_MESSAGE)
+
+
+def test_bundled_rss_manager_health_check_rejects_other_service(tmp_path, monkeypatch) -> None:
+    runtime_paths = _runtime_paths(tmp_path)
+    manager = BundledRSSServiceManager(
+        RSSServiceConfig(data_dir=str(tmp_path / "data"), log_file=str(runtime_paths.rss_service_log_path)),
+        runtime_paths=runtime_paths,
+    )
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"ok": True, "service": "other-service"}
+
+    monkeypatch.setattr(rss_service_module.httpx, "get", lambda *args, **kwargs: FakeResponse())
+
+    ok, detail = manager.check_service()
+
+    assert ok is False
+    assert "公众号后台" in detail
+
+
+def test_bundled_rss_manager_switches_port_when_preferred_port_is_busy(tmp_path, monkeypatch) -> None:
+    runtime_paths = _runtime_paths(tmp_path)
+    manager = BundledRSSServiceManager(
+        RSSServiceConfig(
+            port=4000,
+            base_url="http://127.0.0.1:4000",
+            host="127.0.0.1",
+            data_dir=str(tmp_path / "data"),
+            log_file=str(runtime_paths.rss_service_log_path),
+        ),
+        runtime_paths=runtime_paths,
+    )
+
+    monkeypatch.setattr(
+        manager,
+        "_can_bind_port",
+        lambda host, port: port != 4000,
+    )
+
+    detail = manager._ensure_service_port_available()
+
+    assert "4000" in detail
+    assert manager.config.port != 4000
+    assert manager.config.base_url.endswith(f":{manager.config.port}")

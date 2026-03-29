@@ -483,7 +483,10 @@ class DashboardBackend:
 
     def start_service(self) -> str:
         config = self.load_config()
-        return BundledRSSServiceManager(config.rss_service).start()
+        manager = BundledRSSServiceManager(config.rss_service)
+        detail = manager.start()
+        self._save_service_config_if_changed(config)
+        return detail
 
     def stop_service(self) -> str:
         config = self.load_config()
@@ -491,11 +494,17 @@ class DashboardBackend:
 
     def restart_service(self) -> str:
         config = self.load_config()
-        return BundledRSSServiceManager(config.rss_service).restart()
+        manager = BundledRSSServiceManager(config.rss_service)
+        detail = manager.restart()
+        self._save_service_config_if_changed(config)
+        return detail
 
     def open_service_admin(self, *, return_to: str = "") -> str:
         config = self.load_config()
-        return BundledRSSServiceManager(config.rss_service).open_admin(return_to=return_to)
+        manager = BundledRSSServiceManager(config.rss_service)
+        detail = manager.open_admin(return_to=return_to)
+        self._save_service_config_if_changed(config)
+        return detail
 
     def open_output_dir(self) -> str:
         config = self.load_config()
@@ -522,6 +531,11 @@ class DashboardBackend:
             config.source.url = f"{config.rss_service.base_url}/feeds/all.atom"
         self.save_config(config)
         return "公众号服务设置已保存"
+
+    def _save_service_config_if_changed(self, config: AppConfig) -> None:
+        if not config.source.url or config.source.url.endswith("/feeds/all.atom"):
+            config.source.url = f"{config.rss_service.base_url.rstrip('/')}/feeds/all.atom"
+        self.save_config(config)
 
     def save_llm(
         self,
