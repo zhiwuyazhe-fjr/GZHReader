@@ -32,6 +32,7 @@ type FeedMeta = {
 };
 
 const tagPattern = /#([^\s#]+)/g;
+const reconnectGuide = '删除账号后重新扫码登录';
 
 const parseFeedMeta = (intro?: string): FeedMeta => {
   const source = (intro || '').trim();
@@ -61,11 +62,14 @@ const refreshSummaryText = (result?: RefreshResult) => {
     return '这轮刷新已经完成';
   }
 
+  if (result.reasonCode === 'relogin_required') {
+    return reconnectGuide;
+  }
+
   if (
     result.reasonCode === 'no_available_accounts' ||
     result.reasonCode === 'no_accounts' ||
-    result.reasonCode === 'all_disabled' ||
-    result.reasonCode === 'relogin_required'
+    result.reasonCode === 'all_disabled'
   ) {
     return result.detail || '现在没有可用账号，请先去账号页看一下状态';
   }
@@ -80,17 +84,48 @@ const refreshSummaryText = (result?: RefreshResult) => {
   return `本轮处理 ${refreshedCount} / ${totalCount} 个订阅${reason}`;
 };
 
+const normalizeRefreshFailure = (error: unknown) => {
+  const message = error instanceof Error ? error.message : '请稍后再试';
+
+  if (
+    message.includes(reconnectGuide) ||
+    message.includes('当前账号需要重新登录') ||
+    message.includes('WeReadError401')
+  ) {
+    return {
+      title: '账号已经失效',
+      detail: reconnectGuide,
+    };
+  }
+
+  if (
+    message.includes('没有可用账号') ||
+    message.includes('还没有可用账号')
+  ) {
+    return {
+      title: '这次没能刷新，因为现在没有可用账号',
+      detail: '请先去账号页检查状态',
+    };
+  }
+
+  return {
+    title: '这次没能完成刷新',
+    detail: message,
+  };
+};
+
 const normalizeImportFailure = (error: unknown) => {
   const message =
     error instanceof Error ? error.message : '请先去账号页看一下账号状态';
   if (
     message.includes('没有可用账号') ||
     message.includes('还没有可用账号') ||
+    message.includes(reconnectGuide) ||
     message.includes('重新扫码')
   ) {
     return {
       title: '现在还不能识别这条链接',
-      detail: '先去账号页确认至少有一个账号可用，再回来接入订阅',
+      detail: reconnectGuide,
     };
   }
   return {
@@ -244,12 +279,27 @@ const Feeds = () => {
       return;
     }
 
-    const result = (await refreshMpArticles({
-      mpId: currentMpInfo.id,
-    })) as RefreshResult;
+    let result: RefreshResult;
+    try {
+      result = (await refreshMpArticles({
+        mpId: currentMpInfo.id,
+      })) as RefreshResult;
+    } catch (error) {
+      const failure = normalizeRefreshFailure(error);
+      toast.warning(failure.title, {
+        description: failure.detail,
+      });
+      return;
+    }
     await refetchFeedList();
     await utils.article.list.reset();
     if (result?.completed === false) {
+      if (result.reasonCode === 'relogin_required') {
+        toast.warning('账号已经失效', {
+          description: reconnectGuide,
+        });
+        return;
+      }
       toast.warning(result.reason || '这次没能刷新', {
         description: refreshSummaryText(result),
       });
@@ -261,10 +311,25 @@ const Feeds = () => {
   };
 
   const refreshAllFeeds = async () => {
-    const result = (await refreshMpArticles({})) as RefreshResult;
+    let result: RefreshResult;
+    try {
+      result = (await refreshMpArticles({})) as RefreshResult;
+    } catch (error) {
+      const failure = normalizeRefreshFailure(error);
+      toast.warning(failure.title, {
+        description: failure.detail,
+      });
+      return;
+    }
     await refetchFeedList();
     await utils.article.list.reset();
     if (result?.completed === false) {
+      if (result.reasonCode === 'relogin_required') {
+        toast.warning('账号已经失效', {
+          description: reconnectGuide,
+        });
+        return;
+      }
       toast.warning(result.reason || '这次没能完成刷新', {
         description: refreshSummaryText(result),
       });

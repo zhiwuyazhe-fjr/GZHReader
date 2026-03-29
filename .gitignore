@@ -23,6 +23,14 @@ docs/GITHUB_PUBLISHING.md
 # Runtime data
 data/
 output/
+.runtime/
+*.pid
+weread-sessions.json
+third_party/wewe-rss/**/node_modules/
+third_party/wewe-rss/apps/server/dist/
+third_party/wewe-rss/apps/server/client/assets/
+third_party/wewe-rss/apps/web/*.tsbuildinfo
+third_party/wewe-rss/apps/server/*.tsbuildinfo
 
 # OS/editor
 .DS_Store

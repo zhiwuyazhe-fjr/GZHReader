@@ -12,6 +12,7 @@
   <img src="https://img.shields.io/badge/Platform-Windows-blue?style=flat-square" alt="Windows supported" />
   <img src="https://img.shields.io/badge/Powered%20by-Python%20%7C%20SQLite-2ea44f?style=flat-square" alt="Tech Stack" />
   <img src="https://img.shields.io/badge/Output-Markdown-lightgrey?style=flat-square" alt="Markdown" />
+  <img src="https://img.shields.io/badge/Version-v2.0.0-111827?style=flat-square" alt="v2.0.0" />
 </p>
 
 <p align="center">

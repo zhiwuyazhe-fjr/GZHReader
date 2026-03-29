@@ -7,7 +7,7 @@ import { clearAuthCode, getAuthCode, setAuthCode } from '../utils/auth';
 import { enabledAuthCode, serverOriginUrl } from '../utils/env';
 import { isTRPCClientError, trpc } from '../utils/trpc';
 
-const reconnectMessage = '删除账号后，重新扫码添加';
+const reconnectMessage = '删除账号后重新扫码登录';
 
 export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
   children,

@@ -363,7 +363,7 @@ class DashboardBackend:
         reminders = [
             {
                 "label": "先看看账号状态",
-                "detail": "打开公众号后台，确认账号没有进入待重登或冷却",
+                "detail": "打开公众号后台，确认账号没有进入需要重新登录或暂时休息中",
             },
             {
                 "label": "确认订阅已经刷新",

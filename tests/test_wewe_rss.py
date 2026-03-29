@@ -154,4 +154,4 @@ def test_bundled_rss_manager_marks_legacy_accounts_for_reconnect(tmp_path) -> No
             "SELECT status, consecutive_auth_failures, last_error FROM accounts WHERE id = '1'"
         ).fetchone()
 
-    assert row == (0, 3, "删除账号后，重新扫码添加")
+    assert row == (0, 3, "删除账号后重新扫码登录")

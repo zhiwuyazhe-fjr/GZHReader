@@ -90,7 +90,7 @@ const AccountPage = () => {
     [items],
   );
   const reloginCount = useMemo(
-    () => items.filter((item: any) => item.healthLabel === '待重登').length,
+    () => items.filter((item: any) => item.healthLabel === '需要重新登录').length,
     [items],
   );
 
@@ -196,7 +196,7 @@ const AccountPage = () => {
             <div className="rss-stat-copy">{cooldownCount} 个</div>
           </div>
           <div className="rss-stat-item">
-            <div className="rss-stat-label">待重登</div>
+            <div className="rss-stat-label">需要重新登录</div>
             <div className="rss-stat-copy">{reloginCount} 个</div>
           </div>
           <div className="rss-note">
@@ -212,7 +212,7 @@ const AccountPage = () => {
           <div>
             <h2 className="rss-panel-title">账号列表</h2>
             <p className="rss-panel-copy">
-              可用 暂时休息中 待重登 和禁用都会直接显示在这里
+              可用 暂时休息中 需要重新登录 和禁用都会直接显示在这里
             </p>
           </div>
           <div className="rss-meta">

@@ -50,8 +50,8 @@ type RefreshResultPayload = {
   detail: string;
 };
 
-const accountProbeFreshnessWindowMs = 2 * 60 * 60 * 1000;
-const reconnectMessage = '删除账号后，重新扫码添加';
+const accountProbeFreshnessWindowMs = 12 * 60 * 60 * 1000;
+const reconnectMessage = '删除账号后重新扫码登录';
 
 @Injectable()
 export class TrpcService {
@@ -201,7 +201,7 @@ export class TrpcService {
     if (account.status === statusMap.INVALID) {
       return {
         healthStatus: 'needs_reauth',
-        healthLabel: '待重登',
+        healthLabel: '需要重新登录',
         healthTone: 'danger',
         healthDetail: account.lastError || reconnectMessage,
       };
@@ -377,7 +377,6 @@ export class TrpcService {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (message.includes('WeReadError401')) {
-          await this.markAccountNeedsReauth(account.id);
           continue;
         }
         if (message.includes('WeReadError429') || message.includes('WeReadError400')) {
@@ -695,7 +694,23 @@ export class TrpcService {
     let detail = '';
     try {
       if (mps.length > 0) {
-        await this.precheckAccountAvailability(mps[0].id);
+        try {
+          await this.precheckAccountAvailability(mps[0].id);
+        } catch (error) {
+          const failure = error as RefreshFailure;
+          reasonCode = failure.reasonCode || 'refresh_failed';
+          reason = failure.message || '这次没能完成刷新';
+          detail = failure.detail || reconnectMessage;
+          return {
+            completed: false,
+            refreshedCount,
+            totalCount: mps.length,
+            budgetRemaining: (await this.getDailyUsageSummary()).remaining,
+            reasonCode,
+            reason,
+            detail,
+          };
+        }
       }
       for (const { id } of mps) {
         const budget = await this.getDailyUsageSummary();

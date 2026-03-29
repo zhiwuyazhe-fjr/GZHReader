@@ -23,7 +23,7 @@ from .runtime_paths import (
 )
 
 LOCAL_ACCOUNT_TOKEN_PREFIX = "gzh_local_"
-RECONNECT_MESSAGE = "删除账号后，重新扫码添加"
+RECONNECT_MESSAGE = "删除账号后重新扫码登录"
 
 
 @dataclass(slots=True)
