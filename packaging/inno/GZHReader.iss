@@ -1,3 +1,6 @@
+; Bundled wewe-rss uses deep pnpm paths under _internal. Inno Setup 6 can hit
+; Windows MAX_PATH during extraction ("找不到路径"). Build the installer with
+; Inno Setup 7+ (extended-length paths). See scripts/build_release.ps1 (ISCC resolution).
 #define MyAppName "GZHReader"
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0-dev"

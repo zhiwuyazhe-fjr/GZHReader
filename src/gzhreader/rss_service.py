@@ -86,14 +86,18 @@ class BundledRSSServiceManager:
         if runtime_root is None:
             return False, "未找到 bundled wewe-rss 运行时，请先执行 scripts/build_wewe_rss.ps1"
 
-        entrypoint = runtime_root / "apps" / "server" / "dist" / "main.js"
-        client_index = runtime_root / "apps" / "server" / "client" / "index.hbs"
+        server_root = self._resolve_server_root(runtime_root)
+        if server_root is None:
+            return False, f"缺少 server 入口：{runtime_root}"
+
+        entrypoint = server_root / "dist" / "main.js"
+        client_index = server_root / "client" / "index.hbs"
         if not entrypoint.exists():
             return False, f"缺少 server 入口：{entrypoint}"
         if not client_index.exists():
             return False, f"缺少 web 客户端产物：{client_index}"
 
-        node_exe = self._find_node_executable(runtime_root)
+        node_exe = self._find_node_executable(runtime_root, server_root)
         if node_exe is None:
             return False, "未找到 bundled node.exe，也没有检测到系统 Node.js"
 
@@ -129,16 +133,20 @@ class BundledRSSServiceManager:
         if runtime_root is None:
             raise RuntimeError("未找到 bundled wewe-rss 运行时")
 
-        node_exe = self._find_node_executable(runtime_root)
+        server_root = self._resolve_server_root(runtime_root)
+        if server_root is None:
+            raise RuntimeError("未找到 bundled wewe-rss server 入口")
+
+        node_exe = self._find_node_executable(runtime_root, server_root)
         if node_exe is None:
             raise RuntimeError("未找到可用的 Node.js 运行时")
 
         db_path = Path(self.config.data_dir).expanduser().resolve() / "wewe-rss.db"
         self._start_bridge()
-        self._apply_sqlite_migrations(runtime_root, db_path)
+        self._apply_sqlite_migrations(server_root, db_path)
         self._mark_legacy_accounts_for_reconnect(db_path)
 
-        entrypoint = runtime_root / "apps" / "server" / "dist" / "main.js"
+        entrypoint = server_root / "dist" / "main.js"
         log_file = Path(self.config.log_file).expanduser().resolve()
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -248,26 +256,42 @@ class BundledRSSServiceManager:
 
     def _resolve_runtime_root(self) -> Path | None:
         source = self.runtime_paths.bundled_wewe_rss_source_dir
-        if not is_frozen_app() and (source / "apps" / "server" / "dist" / "main.js").exists():
+        if not is_frozen_app() and self._resolve_server_root(source):
             return source
 
         packaged = self.runtime_paths.bundled_wewe_rss_runtime_dir
-        if packaged.exists():
+        if packaged.exists() and self._resolve_server_root(packaged):
             return packaged
 
-        if (source / "apps" / "server" / "dist" / "main.js").exists():
+        if self._resolve_server_root(source):
             return source
         return None
 
-    def _find_node_executable(self, runtime_root: Path) -> Path | None:
-        for candidate in (runtime_root / "node.exe", runtime_root / "node", runtime_root / ".node" / "node.exe"):
+    def _resolve_server_root(self, runtime_root: Path) -> Path | None:
+        direct_root = runtime_root
+        if (direct_root / "dist" / "main.js").exists():
+            return direct_root
+
+        nested_root = runtime_root / "apps" / "server"
+        if (nested_root / "dist" / "main.js").exists():
+            return nested_root
+
+        return None
+
+    def _find_node_executable(self, runtime_root: Path, server_root: Path | None = None) -> Path | None:
+        candidates: list[Path] = []
+        if server_root is not None:
+            candidates.extend((server_root / "node.exe", server_root / "node", server_root / ".node" / "node.exe"))
+        candidates.extend((runtime_root / "node.exe", runtime_root / "node", runtime_root / ".node" / "node.exe"))
+
+        for candidate in candidates:
             if candidate.exists():
                 return candidate
         system_node = shutil.which("node")
         return Path(system_node) if system_node else None
 
-    def _apply_sqlite_migrations(self, runtime_root: Path, db_path: Path) -> None:
-        migrations_root = self._resolve_sqlite_migrations_root(runtime_root)
+    def _apply_sqlite_migrations(self, server_root: Path, db_path: Path) -> None:
+        migrations_root = self._resolve_sqlite_migrations_root(server_root)
         if not migrations_root.exists():
             return
 
@@ -330,8 +354,8 @@ class BundledRSSServiceManager:
             )
             connection.commit()
 
-    def _resolve_sqlite_migrations_root(self, runtime_root: Path) -> Path:
-        return runtime_root / "apps" / "server" / "prisma" / "migrations"
+    def _resolve_sqlite_migrations_root(self, server_root: Path) -> Path:
+        return server_root / "prisma" / "migrations"
 
     def _wait_until_ready(self, timeout_seconds: float) -> bool:
         deadline = time.monotonic() + timeout_seconds

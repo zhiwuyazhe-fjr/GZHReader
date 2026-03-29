@@ -26,7 +26,7 @@ common_datas = [
     (str(project_root / "THIRD_PARTY_NOTICES.md"), "."),
 ]
 if wewe_rss_runtime_root.exists():
-    common_datas.append((str(wewe_rss_runtime_root), "wewe-rss-runtime"))
+    common_datas.append((str(wewe_rss_runtime_root), "r"))
 common_hiddenimports = sorted(
     set(
         collect_submodules("uvicorn")

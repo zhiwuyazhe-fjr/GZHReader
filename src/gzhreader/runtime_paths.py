@@ -8,6 +8,7 @@ from pathlib import Path
 APP_NAME = "GZHReader"
 GUI_EXE_NAME = "GZHReader.exe"
 CONSOLE_EXE_NAME = "GZHReader Console.exe"
+BUNDLED_RSS_RUNTIME_DIR_NAME = "r"
 DEFAULT_GUI_HOST = "127.0.0.1"
 DEFAULT_GUI_PORT = 8765
 
@@ -95,7 +96,7 @@ def get_runtime_paths() -> RuntimePaths:
     rss_service_log_path = logs_dir / "wewe-rss.log"
     bundled_wewe_rss_source_dir = get_repo_root() / "third_party" / "wewe-rss"
     bundled_wewe_rss_runtime_dir = (
-        resource_dir / "wewe-rss-runtime"
+        resource_dir / BUNDLED_RSS_RUNTIME_DIR_NAME
         if is_frozen_app()
         else get_repo_root() / "build" / "wewe-rss-runtime"
     )

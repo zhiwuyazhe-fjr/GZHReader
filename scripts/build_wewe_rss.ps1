@@ -57,6 +57,47 @@ function Invoke-Step {
     }
 }
 
+function Remove-PathRobust {
+    param(
+        [string]$LiteralPath,
+        [int]$Retries = 5
+    )
+
+    if (-not (Test-Path $LiteralPath)) {
+        return
+    }
+
+    for ($attempt = 1; $attempt -le $Retries; $attempt++) {
+        try {
+            Get-ChildItem -LiteralPath $LiteralPath -Recurse -Force -ErrorAction SilentlyContinue |
+                Where-Object { -not $_.PSIsContainer } |
+                ForEach-Object {
+                    try {
+                        $_.IsReadOnly = $false
+                    } catch {
+                    }
+                }
+
+            Remove-Item -LiteralPath $LiteralPath -Recurse -Force -ErrorAction Stop
+        } catch {
+            if (-not (Test-Path $LiteralPath)) {
+                return
+            }
+
+            if ($attempt -ge $Retries) {
+                throw "Failed to remove path after $Retries attempts: $LiteralPath`n$($_.Exception.Message)"
+            }
+
+            Start-Sleep -Milliseconds (250 * $attempt)
+            continue
+        }
+
+        if (-not (Test-Path $LiteralPath)) {
+            return
+        }
+    }
+}
+
 $projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 if (-not $SourceDir) {
     $SourceDir = Join-Path $projectRoot "third_party\wewe-rss"
@@ -85,14 +126,13 @@ if (-not $pnpmPath) {
 }
 
 if (Test-Path $stagingDir) {
-    Remove-Item $stagingDir -Recurse -Force
+    Remove-PathRobust -LiteralPath $stagingDir
 }
 if (Test-Path $outputDir) {
-    Remove-Item $outputDir -Recurse -Force
+    Remove-PathRobust -LiteralPath $outputDir
 }
 
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
-New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
 robocopy $sourceDir $stagingDir /E /XD .git node_modules .github .vscode | Out-Null
 if ($LASTEXITCODE -gt 7) {
@@ -119,11 +159,47 @@ else {
     Invoke-Step -FilePath $pnpmPath -Arguments @("--filter", "server", "build") -WorkingDirectory $stagingDir -Environment $envVars
 }
 
-robocopy $stagingDir $outputDir /E /XD .git .github .vscode | Out-Null
-if ($LASTEXITCODE -gt 7) {
-    throw "Failed to copy the built runtime into the output directory."
+Write-Host "Creating deployable wewe-rss runtime..."
+if ($pnpmLeaf -in @("corepack.exe", "corepack", "corepack.cmd")) {
+    $corepackPnpm = "pnpm@8.15.8"
+    Invoke-Step -FilePath $pnpmPath -Arguments @($corepackPnpm, "--filter", "server", "deploy", "--prod", $outputDir) -WorkingDirectory $stagingDir -Environment $envVars
+}
+else {
+    Invoke-Step -FilePath $pnpmPath -Arguments @("--filter", "server", "deploy", "--prod", $outputDir) -WorkingDirectory $stagingDir -Environment $envVars
 }
 
 Copy-Item $nodePath (Join-Path $outputDir "node.exe") -Force
+
+# pnpm deploy omits the generated ".prisma" runtime folder; copy it from the
+# build workspace so the deployed server can load Prisma at runtime.
+$prismaPackage = Get-ChildItem (Join-Path $stagingDir "node_modules\.pnpm") -Directory -Filter "@prisma+client@*" |
+    Select-Object -First 1
+if ($prismaPackage) {
+    $prismaSourceDir = Join-Path $prismaPackage.FullName "node_modules\.prisma"
+    $prismaDestDir = Join-Path $outputDir ("node_modules\.pnpm\" + $prismaPackage.Name + "\node_modules\.prisma")
+    if (Test-Path $prismaSourceDir) {
+        New-Item -ItemType Directory -Path (Split-Path $prismaDestDir -Parent) -Force | Out-Null
+        robocopy $prismaSourceDir $prismaDestDir /E | Out-Null
+        if ($LASTEXITCODE -gt 7) {
+            throw "Failed to copy Prisma runtime assets into the deployed wewe-rss runtime."
+        }
+    }
+}
+
+# Trim development-only sources/configs from the packaged runtime.
+foreach ($path in @(
+    (Join-Path $outputDir "src"),
+    (Join-Path $outputDir "test"),
+    (Join-Path $outputDir ".eslintrc.js"),
+    (Join-Path $outputDir ".gitignore"),
+    (Join-Path $outputDir ".prettierrc.json"),
+    (Join-Path $outputDir "nest-cli.json"),
+    (Join-Path $outputDir "tsconfig.build.json"),
+    (Join-Path $outputDir "tsconfig.json")
+)) {
+    if (Test-Path $path) {
+        Remove-PathRobust -LiteralPath $path
+    }
+}
 
 Write-Host "wewe-rss runtime built at: $outputDir"
