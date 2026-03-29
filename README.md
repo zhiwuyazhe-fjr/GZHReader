@@ -65,18 +65,21 @@
 如果你希望参与开发或者从源码运行：
 
 **1. 准备环境**
+
 ```powershell
 python -m venv .venv
-.\.venv\Scriptsctivate
+.\.venv\Scripts\activate
 pip install -e .[dev]
 ```
 
 **2. 构建内置服务**
+
 ```powershell
-.\scriptsuild_wewe_rss.ps1
+.\scripts\build_wewe_rss.ps1
 ```
 
 **3. 启动主界面**
+
 ```powershell
 .\.venv\Scripts\python.exe -m gzhreader app
 ```
@@ -98,6 +101,7 @@ gzhreader service restart
 gzhreader service status
 gzhreader service open-admin
 ```
+
 </details>
 
 ---
@@ -107,10 +111,12 @@ gzhreader service open-admin
 经历最近一轮的重构，我们的账号体系已从“将远端平台代理 token 塞进数据库”全面升级为 **“本地桥接 + 本地会话托管”** 的过渡架构。
 
 这彻底解决了账号体系不稳的痛点：
+
 - **解耦平台**：本地后台不再硬编码依赖可能变更的远端平台代理 URL。
 - **杜绝过期数据**：系统不会再带着不可控的过期 token 在后台默默报错。
 
 ⚙️ **新机制的工作方式：**
+
 - 旧版数据升级会被拦截，提醒重新连接以保障数据流通畅。
 - 本地会话桥安全托管最新登录态。
 - 任何行为（刷新、导入、生成）前会执行**可用性预检**。
@@ -132,7 +138,6 @@ GZHReader/
 └── packaging/                  # 包含 Inno Setup 和 PyInstaller 的打包配置
 ```
 
-
 ---
 
 ## ❓ 常见问题 (FAQ)
@@ -144,7 +149,7 @@ GZHReader/
 
 <details>
 <summary><b>Q: 为什么刷新数据时总是要求重新连接账号？</b></summary>
-当系统检测到微信那边的会话事实上已经失效时，会主动拦截并停止所有动作，避免继续使用旧记录污染你的数 据库。此时明确地重新连接是防止账号被风控的最佳实践。
+当系统检测到微信那边的会话事实上已经失效时，会主动拦截并停止所有动作，避免继续使用旧记录污染你的数据库。此时明确地重新连接是防止账号被风控的最佳实践。
 </details>
 
 <details>

@@ -45,3 +45,5 @@ installer/Output/
 logs/
 htmlcov/
 .coverage
+AGENTS.md
+TECH-README.md
