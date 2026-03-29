@@ -1,6 +1,6 @@
 from gzhreader import config as config_module
 from gzhreader.config import default_config, ensure_config
-from gzhreader.runtime_paths import RuntimePaths, build_schedule_command
+from gzhreader.runtime_paths import RuntimePaths, build_schedule_command, get_bundled_rss_runtime_dir
 import gzhreader.runtime_paths as runtime_paths_module
 
 
@@ -44,6 +44,19 @@ def test_dev_runtime_paths_use_build_runtime_dir(monkeypatch, tmp_path) -> None:
     paths = runtime_paths_module.get_runtime_paths()
 
     assert paths.bundled_wewe_rss_runtime_dir == tmp_path / "build" / "wewe-rss-runtime"
+
+
+def test_frozen_runtime_paths_prefer_top_level_runtime_dir(monkeypatch, tmp_path) -> None:
+    top_level_runtime = tmp_path / "r"
+    internal_runtime = tmp_path / "_internal" / "r"
+    top_level_runtime.mkdir(parents=True, exist_ok=True)
+    internal_runtime.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(runtime_paths_module, "is_frozen_app", lambda: True)
+    monkeypatch.setattr(runtime_paths_module.sys, "executable", str(tmp_path / "GZHReader.exe"))
+    monkeypatch.setattr(runtime_paths_module, "get_resource_root", lambda: tmp_path / "_internal")
+
+    assert get_bundled_rss_runtime_dir() == top_level_runtime
 
 
 def test_ensure_config_migrates_legacy_relative_paths_in_frozen_mode(monkeypatch, tmp_path) -> None:
@@ -117,3 +130,16 @@ def test_build_schedule_command_uses_console_exe_when_frozen(monkeypatch, tmp_pa
     assert command.executable == console_exe
     assert command.arguments == ["run", "today", "--config", str((tmp_path / "config.yaml").resolve())]
     assert command.working_dir == console_exe.parent
+
+
+def test_build_schedule_command_falls_back_to_gui_exe_when_console_exe_is_absent(monkeypatch, tmp_path) -> None:
+    gui_exe = tmp_path / "GZHReader.exe"
+    monkeypatch.setattr(runtime_paths_module, "is_frozen_app", lambda: True)
+    monkeypatch.setattr(runtime_paths_module, "get_console_executable_path", lambda: gui_exe)
+    monkeypatch.setattr(runtime_paths_module.sys, "executable", str(gui_exe))
+
+    command = build_schedule_command(tmp_path / "config.yaml")
+
+    assert command.executable == gui_exe
+    assert command.arguments == ["run", "today", "--config", str((tmp_path / "config.yaml").resolve())]
+    assert command.working_dir == gui_exe.parent

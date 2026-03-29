@@ -95,11 +95,7 @@ def get_runtime_paths() -> RuntimePaths:
     rss_service_pid_file = rss_service_dir / "wewe-rss.pid"
     rss_service_log_path = logs_dir / "wewe-rss.log"
     bundled_wewe_rss_source_dir = get_repo_root() / "third_party" / "wewe-rss"
-    bundled_wewe_rss_runtime_dir = (
-        resource_dir / BUNDLED_RSS_RUNTIME_DIR_NAME
-        if is_frozen_app()
-        else get_repo_root() / "build" / "wewe-rss-runtime"
-    )
+    bundled_wewe_rss_runtime_dir = get_bundled_rss_runtime_dir()
     return RuntimePaths(
         state_dir=state_dir,
         config_path=config_path,
@@ -145,6 +141,25 @@ def resolve_config_path(config_path: Path | None) -> Path:
 
 def get_script_path(script_name: str) -> Path:
     return get_resource_root() / "scripts" / script_name
+
+
+def get_bundled_rss_runtime_dir() -> Path:
+    resource_root = get_resource_root()
+    candidates: list[Path] = []
+    if is_frozen_app():
+        candidates.extend(
+            [
+                Path(sys.executable).resolve().parent / BUNDLED_RSS_RUNTIME_DIR_NAME,
+                resource_root / BUNDLED_RSS_RUNTIME_DIR_NAME,
+            ]
+        )
+    else:
+        candidates.append(get_repo_root() / "build" / "wewe-rss-runtime")
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def get_console_executable_path() -> Path | None:

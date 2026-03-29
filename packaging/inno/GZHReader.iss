@@ -1,6 +1,6 @@
-; Bundled wewe-rss uses deep pnpm paths under _internal. Inno Setup 6 can hit
-; Windows MAX_PATH during extraction ("找不到路径"). Build the installer with
-; Inno Setup 7+ (extended-length paths). See scripts/build_release.ps1 (ISCC resolution).
+; Bundled wewe-rss now ships at top-level "r" instead of under "_internal" to
+; shorten install paths. This keeps the package compatible with Inno Setup 6.7.1
+; stable and avoids the uninstall regression we observed on Inno Setup 7 preview builds.
 #define MyAppName "GZHReader"
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0-dev"
@@ -43,7 +43,6 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 
 [Icons]
 Name: "{group}\GZHReader"; Filename: "{app}\GZHReader.exe"
-Name: "{group}\GZHReader Console"; Filename: "{app}\GZHReader Console.exe"
 Name: "{autodesktop}\GZHReader"; Filename: "{app}\GZHReader.exe"; Tasks: desktopicon
 
 [Run]

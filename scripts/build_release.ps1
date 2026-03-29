@@ -81,15 +81,16 @@ function Resolve-IsccPath {
         throw "指定的 Inno Setup 编译器不存在：$PreferredPath"
     }
 
-    # Inno Setup 7 removes MAX_PATH limits; bundled wewe-rss uses deep pnpm paths and
-    # IS 6 can fail at install-time extraction with "找不到路径" / path not found.
+    # Stable Inno Setup 6.7.1 works with the flattened runtime layout we now ship.
+    # Inno Setup 7 preview builds currently reproduce an uninstall-time
+    # "PathRedir: Not initialized" error, so prefer stable releases first.
     $candidates = @(
-        (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 7\ISCC.exe'),
-        'C:\Program Files\Inno Setup 7\ISCC.exe',
-        'C:\Program Files (x86)\Inno Setup 7\ISCC.exe',
         (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'),
         'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
-        'C:\Program Files\Inno Setup 6\ISCC.exe'
+        'C:\Program Files\Inno Setup 6\ISCC.exe',
+        (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 7\ISCC.exe'),
+        'C:\Program Files\Inno Setup 7\ISCC.exe',
+        'C:\Program Files (x86)\Inno Setup 7\ISCC.exe'
     ) | Where-Object { $_ }
 
     foreach ($candidate in $candidates) {
@@ -141,11 +142,42 @@ function Resolve-IsccPath {
         }
     }
 
-    $prefer7 = $registryIscc | Where-Object { $_ -like '*Inno Setup 7*' } | Select-Object -First 1
-    if ($prefer7) {
-        return $prefer7
+    $preferStable6 = $registryIscc | Where-Object { $_ -like '*Inno Setup 6*' } | Select-Object -First 1
+    if ($preferStable6) {
+        return $preferStable6
     }
     return $registryIscc | Select-Object -First 1
+}
+
+function Assert-ProjectedInstallPathLengthsSafe {
+    param(
+        [string]$SourceRoot,
+        [string]$ProjectedInstallRoot,
+        [int]$MaxPathLength = 240
+    )
+
+    $sourceRootResolved = (Resolve-Path $SourceRoot).Path.TrimEnd('\')
+    $violations = @()
+
+    Get-ChildItem -LiteralPath $sourceRootResolved -Recurse -Force -File | ForEach-Object {
+        $relativePath = $_.FullName.Substring($sourceRootResolved.Length).TrimStart('\')
+        $projectedInstallPath = Join-Path $ProjectedInstallRoot $relativePath
+        if ($projectedInstallPath.Length -gt $MaxPathLength) {
+            $violations += [pscustomobject]@{
+                RelativePath = $relativePath
+                ProjectedLength = $projectedInstallPath.Length
+                ProjectedPath = $projectedInstallPath
+            }
+        }
+    }
+
+    if ($violations.Count -gt 0) {
+        $examples = $violations |
+            Sort-Object ProjectedLength -Descending |
+            Select-Object -First 5 |
+            ForEach-Object { "$($_.ProjectedLength): $($_.RelativePath)" }
+        throw "安装包文件路径仍然过深，默认安装到 '$ProjectedInstallRoot' 时可能失败。`n$($examples -join "`n")"
+    }
 }
 
 $projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
@@ -253,8 +285,11 @@ $distAppDir = Join-Path $distDir 'GZHReader'
 if (-not (Test-Path (Join-Path $distAppDir 'GZHReader.exe'))) {
     throw '资源检查失败：未生成 GZHReader.exe'
 }
-if (-not (Test-Path (Join-Path $distAppDir 'GZHReader Console.exe'))) {
-    throw '资源检查失败：未生成 GZHReader Console.exe'
+
+$packagedRuntimeInternalDir = Join-Path $distAppDir '_internal\r'
+$packagedRuntimeTopLevelDir = Join-Path $distAppDir 'r'
+if ((Test-Path $packagedRuntimeInternalDir) -and -not (Test-Path $packagedRuntimeTopLevelDir)) {
+    Move-Item -LiteralPath $packagedRuntimeInternalDir -Destination $packagedRuntimeTopLevelDir
 }
 if (-not (Test-Path (Join-Path $distAppDir '_internal\scripts\register_task.ps1'))) {
     throw '资源检查失败：register_task.ps1 未被打入产物'
@@ -263,12 +298,16 @@ if (-not (Test-Path (Join-Path $distAppDir '_internal\gzhreader\templates'))) {
     throw '资源检查失败：templates 未被打入产物'
 }
 $packagedRuntimeEntries = @(
+    (Join-Path $distAppDir 'r\apps\server\dist\main.js'),
+    (Join-Path $distAppDir 'r\dist\main.js'),
     (Join-Path $distAppDir '_internal\r\apps\server\dist\main.js'),
     (Join-Path $distAppDir '_internal\r\dist\main.js')
 )
 if (-not ($packagedRuntimeEntries | Where-Object { Test-Path $_ } | Select-Object -First 1)) {
     throw '资源检查失败：bundled wewe-rss 运行时未被打入产物'
 }
+
+Assert-ProjectedInstallPathLengthsSafe -SourceRoot $distAppDir -ProjectedInstallRoot 'C:\Program Files\GZHReader'
 
 if ($SkipInstaller) {
     Write-Host "已跳过 Inno Setup，PyInstaller 产物位于：$distAppDir"
@@ -277,13 +316,13 @@ if ($SkipInstaller) {
 
 $iscc = Resolve-IsccPath -PreferredPath $InnoSetupExe
 if (-not $iscc) {
-    throw '未找到 Inno Setup 编译器 ISCC.exe，请先安装 Inno Setup 6，或用 -InnoSetupExe 显式指定路径。'
+    throw '未找到可用的 Inno Setup 编译器 ISCC.exe，请先安装 Inno Setup 6.7.1 稳定版，或用 -InnoSetupExe 显式指定路径。'
 }
 
 Write-Host '开始生成安装包...'
 Write-Host "使用 Inno Setup：$iscc"
-if ($iscc -notlike '*Inno Setup 7*') {
-    Write-Warning '当前使用的是 Inno Setup 6 或更早版本。打包产物含深层 node_modules 路径，旧版安装器可能在解压时出现「找不到路径」。请安装 Inno Setup 7 并重新编译安装包。'
+if ($iscc -like '*Inno Setup 7*') {
+    Write-Warning '当前检测到的是 Inno Setup 7 路径。若为 7.0.0 preview 版，卸载器可能报 “PathRedir: Not initialized”。除非你确认是稳定正式版，否则请优先改用 Inno Setup 6.7.1。'
 }
 Write-Host "应用版本：$appVersion"
 if (Test-Path $installerSourceDir) {

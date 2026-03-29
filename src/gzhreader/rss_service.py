@@ -355,7 +355,15 @@ class BundledRSSServiceManager:
             connection.commit()
 
     def _resolve_sqlite_migrations_root(self, server_root: Path) -> Path:
-        return server_root / "prisma" / "migrations"
+        direct = server_root / "prisma" / "migrations"
+        if direct.exists():
+            return direct
+
+        nested = server_root / "apps" / "server" / "prisma" / "migrations"
+        if nested.exists():
+            return nested
+
+        return direct
 
     def _wait_until_ready(self, timeout_seconds: float) -> bool:
         deadline = time.monotonic() + timeout_seconds

@@ -57,6 +57,24 @@ function Invoke-Step {
     }
 }
 
+function Invoke-Robocopy {
+    param(
+        [string]$Source,
+        [string]$Destination,
+        [string[]]$ExtraArguments = @()
+    )
+
+    if (-not (Test-Path $Source)) {
+        throw "Copy source does not exist: $Source"
+    }
+
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    robocopy $Source $Destination @ExtraArguments | Out-Null
+    if ($LASTEXITCODE -gt 7) {
+        throw "Robocopy failed: $Source -> $Destination"
+    }
+}
+
 function Remove-PathRobust {
     param(
         [string]$LiteralPath,
@@ -98,6 +116,45 @@ function Remove-PathRobust {
     }
 }
 
+function Convert-ToFlatNodeModulesLayout {
+    param(
+        [string]$NodeModulesDir,
+        [string]$PrismaRuntimeSourceDir = ""
+    )
+
+    if (-not (Test-Path $NodeModulesDir)) {
+        throw "node_modules directory does not exist: $NodeModulesDir"
+    }
+
+    $flattenedDir = "${NodeModulesDir}.__flat"
+    $hoistedNodeModulesDir = Join-Path $NodeModulesDir ".pnpm\node_modules"
+
+    if (Test-Path $flattenedDir) {
+        Remove-PathRobust -LiteralPath $flattenedDir
+    }
+    New-Item -ItemType Directory -Path $flattenedDir -Force | Out-Null
+
+    if (Test-Path $hoistedNodeModulesDir) {
+        Invoke-Robocopy -Source $hoistedNodeModulesDir -Destination $flattenedDir -ExtraArguments @('/E')
+    }
+
+    Invoke-Robocopy -Source $NodeModulesDir -Destination $flattenedDir -ExtraArguments @('/E', '/XD', '.pnpm')
+
+    if ($PrismaRuntimeSourceDir -and (Test-Path $PrismaRuntimeSourceDir)) {
+        Invoke-Robocopy -Source $PrismaRuntimeSourceDir -Destination (Join-Path $flattenedDir '.prisma') -ExtraArguments @('/E')
+    }
+
+    $remainingReparsePoint = Get-ChildItem -LiteralPath $flattenedDir -Recurse -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Attributes -match 'ReparsePoint' } |
+        Select-Object -First 1
+    if ($remainingReparsePoint) {
+        throw "Flattened node_modules still contains a junction or symlink: $($remainingReparsePoint.FullName)"
+    }
+
+    Remove-PathRobust -LiteralPath $NodeModulesDir
+    Move-Item -LiteralPath $flattenedDir -Destination $NodeModulesDir
+}
+
 $projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 if (-not $SourceDir) {
     $SourceDir = Join-Path $projectRoot "third_party\wewe-rss"
@@ -134,10 +191,7 @@ if (Test-Path $outputDir) {
 
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
-robocopy $sourceDir $stagingDir /E /XD .git node_modules .github .vscode | Out-Null
-if ($LASTEXITCODE -gt 7) {
-    throw "Failed to copy third_party/wewe-rss into the staging directory."
-}
+Invoke-Robocopy -Source $sourceDir -Destination $stagingDir -ExtraArguments @('/E', '/XD', '.git', 'node_modules', '.github', '.vscode')
 
 $envVars = @{
     "DATABASE_URL" = "file:../data/wewe-rss.db"
@@ -174,17 +228,13 @@ Copy-Item $nodePath (Join-Path $outputDir "node.exe") -Force
 # build workspace so the deployed server can load Prisma at runtime.
 $prismaPackage = Get-ChildItem (Join-Path $stagingDir "node_modules\.pnpm") -Directory -Filter "@prisma+client@*" |
     Select-Object -First 1
+$prismaSourceDir = $null
 if ($prismaPackage) {
     $prismaSourceDir = Join-Path $prismaPackage.FullName "node_modules\.prisma"
-    $prismaDestDir = Join-Path $outputDir ("node_modules\.pnpm\" + $prismaPackage.Name + "\node_modules\.prisma")
-    if (Test-Path $prismaSourceDir) {
-        New-Item -ItemType Directory -Path (Split-Path $prismaDestDir -Parent) -Force | Out-Null
-        robocopy $prismaSourceDir $prismaDestDir /E | Out-Null
-        if ($LASTEXITCODE -gt 7) {
-            throw "Failed to copy Prisma runtime assets into the deployed wewe-rss runtime."
-        }
-    }
 }
+
+Write-Host "Flattening bundled node_modules layout..."
+Convert-ToFlatNodeModulesLayout -NodeModulesDir (Join-Path $outputDir "node_modules") -PrismaRuntimeSourceDir $prismaSourceDir
 
 # Trim development-only sources/configs from the packaged runtime.
 foreach ($path in @(
@@ -200,6 +250,13 @@ foreach ($path in @(
     if (Test-Path $path) {
         Remove-PathRobust -LiteralPath $path
     }
+}
+
+$longestRuntimePath = Get-ChildItem -LiteralPath $outputDir -Recurse -Force -File |
+    Sort-Object { $_.FullName.Length } -Descending |
+    Select-Object -First 1
+if ($longestRuntimePath) {
+    Write-Host "Longest wewe-rss runtime path length: $($longestRuntimePath.FullName.Length)"
 }
 
 Write-Host "wewe-rss runtime built at: $outputDir"

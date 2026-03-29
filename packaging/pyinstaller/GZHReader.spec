@@ -38,35 +38,8 @@ common_hiddenimports = sorted(
 )
 common_excludes = ["pytest", "tests", "test", "IPython"]
 
-console_analysis = Analysis(
-    [str(gzhreader_root / "console_entry.py")],
-    pathex=[str(src_root)],
-    binaries=common_binaries,
-    datas=common_datas,
-    hiddenimports=common_hiddenimports,
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=common_excludes,
-    noarchive=False,
-)
-console_pyz = PYZ(console_analysis.pure)
-console_exe = EXE(
-    console_pyz,
-    console_analysis.scripts,
-    [],
-    exclude_binaries=True,
-    name="GZHReader Console",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=True,
-    icon=str(app_icon),
-)
-
 gui_analysis = Analysis(
-    [str(gzhreader_root / "gui_entry.py")],
+    [str(gzhreader_root / "frozen_entry.py")],
     pathex=[str(src_root)],
     binaries=common_binaries,
     datas=common_datas,
@@ -94,11 +67,8 @@ gui_exe = EXE(
 
 coll = COLLECT(
     gui_exe,
-    console_exe,
     gui_analysis.binaries,
     gui_analysis.datas,
-    console_analysis.binaries,
-    console_analysis.datas,
     strip=False,
     upx=True,
     name="GZHReader",
