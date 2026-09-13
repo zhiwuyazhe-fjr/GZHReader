@@ -33,9 +33,6 @@ class CoreApp:
         configure_logging(self.paths.logs)
         self.storage = Storage(self.paths.db, self.paths.backups)
         self.vault = CredentialVault(self.paths.secrets)
-        stored_connection = self.storage.connection_state("weread")
-        if stored_connection and stored_connection.get("reconnect_required"):
-            self.vault.clear("weread")
         self.provider = WeReadProvider(self.vault)
         self.resolver = ArticleLinkResolver(
             self.paths.link_browser_profile,
@@ -162,6 +159,13 @@ class CoreApp:
         if stored:
             state = str(stored.get("state") or "")
             raw_until = str(stored.get("cooldown_until") or "")
+            if state == "verification":
+                return {
+                    "state": "verification",
+                    "message": str(stored.get("message") or "需要在浏览器中重新验证访问"),
+                    "reconnect_required": True,
+                    "cooldown_until": "",
+                }
             if state == "cooldown":
                 try:
                     until = datetime.fromisoformat(raw_until)
@@ -254,7 +258,6 @@ class CoreApp:
                 logger.exception("WeRead login failed")
                 message = str(exc) or "连接没有完成"
                 if "过于频繁" in message or "稍后再试" in message or "24 小时" in message:
-                    self.vault.clear("weread")
                     cooldown_until = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
                     self.storage.set_connection_state("weread", "cooldown", message, True, cooldown_until)
                     self.emit("provider.cooldown", {"message": message, "cooldown_until": cooldown_until})

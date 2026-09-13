@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import inspect
 from datetime import date, datetime, timedelta
 
-from gzhreader_core.browser.auth import classify_articles_payload
+from gzhreader_core.browser.auth import WeReadLoginCapture, classify_articles_payload
 from gzhreader_core.credentials import CredentialVault
 from gzhreader_core.scheduler import Scheduler
 from gzhreader_core.storage import Storage
@@ -35,3 +36,8 @@ def test_weread_browser_response_classification():
     assert classify_articles_payload({"errCode": -2041, "errMsg": "操作过于频繁，请稍后再试"})[0] == "cooldown"
     assert classify_articles_payload({"errCode": -2010, "errMsg": "user missing"})[0] == "cooldown"
     assert classify_articles_payload({"errCode": -2012, "errMsg": "user missing"})[0] == "login"
+
+
+def test_verification_flow_does_not_override_browser_window_close():
+    source = inspect.getsource(WeReadLoginCapture.run)
+    assert "window.close" not in source

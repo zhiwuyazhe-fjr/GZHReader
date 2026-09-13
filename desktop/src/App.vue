@@ -41,6 +41,10 @@ const filteredArticles = computed(() => bootstrap.value.articles.filter((a: any)
   return matchSource && matchUnread && text.includes(query.value.toLowerCase())
 }))
 const connectionReady = computed(() => bootstrap.value.connection?.state === 'ready')
+const connectionCoolingDown = computed(() => bootstrap.value.connection?.state === 'cooldown')
+const connectionTitle = computed(() => connectionCoolingDown.value
+  ? '微信读书暂时限制验证'
+  : (bootstrap.value.connection?.state === 'verification' ? '需要重新确认访问' : '需要重新连接微信读书'))
 watch(() => settingsDraft.value.theme, applyTheme)
 watch(sidebarCollapsed, value => localStorage.setItem('gzhreader.sidebarCollapsed', value ? '1' : '0'))
 
@@ -49,14 +53,16 @@ const today = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', 
 onMounted(async () => {
   await reload()
   core.on('sync.started', () => { busy.value = true })
-  core.on('sync.completed', async (payload) => { busy.value = false; message.value = payload.inserted ? `发现 ${payload.inserted} 篇新文章` : (payload.errors?.length ? '部分内容暂时无法更新' : '已是最新内容'); await reload() })
+  core.on('sync.completed', async (payload) => { busy.value = false; message.value = payload.inserted ? `发现 ${payload.inserted} 篇新文章` : (payload.errors?.[0] || '已是最新内容'); await reload() })
   core.on('articles.new_batch', payload => notify('发现新文章', `${payload.count} 篇新内容已经整理到工作台`))
   core.on('auth.progress', payload => { message.value = payload.message })
   core.on('auth.completed', async () => { message.value = '微信读书已连接'; await reload() })
   core.on('auth.failed', payload => message.value = payload.message)
+  core.on('verification.required', async payload => { busy.value = false; message.value = payload.message; await reload() })
+  core.on('sync.skipped', async payload => { busy.value = false; message.value = payload.message; await reload() })
   core.on('link_resolution.progress', payload => { message.value = payload.message })
   core.on('credential.expired', payload => { message.value = payload.message; notify('需要重新连接', payload.message) })
-  core.on('provider.cooldown', payload => message.value = payload.message)
+  core.on('provider.cooldown', async payload => { busy.value = false; message.value = payload.message; await reload() })
   core.on('core.error', payload => message.value = payload.message)
   core.on('briefing.ready', async () => { message.value = '今日简报已经准备好'; notify('每日简报', '今天的简报已经准备好'); await reload() })
   try {
@@ -283,7 +289,7 @@ async function notify(title: string, body: string) {
 
       <section v-else-if="page === 'sources'" class="page">
         <header class="page-header"><div><p class="eyebrow">内容来源</p><h1>关注的公众号</h1><p>粘贴任意一篇公众号文章链接，即可开始关注。</p></div></header>
-        <div v-if="!connectionReady && bootstrap.sources.length" class="connection-banner"><div><strong>需要重新连接微信读书</strong><p>连接恢复后，公众号会继续自动更新。</p></div><button class="secondary-button" @click="reconnect()">重新连接</button></div>
+        <div v-if="!connectionReady && bootstrap.sources.length" class="connection-banner"><div><strong>{{ connectionTitle }}</strong><p>{{ bootstrap.connection.message || '完成后公众号会继续更新。' }}</p></div><button v-if="!connectionCoolingDown" class="secondary-button" @click="reconnect()">在浏览器中验证</button></div>
         <div class="add-source-panel">
           <label for="article-url">公众号文章链接</label>
           <div class="input-action"><input id="article-url" v-model="addUrl" placeholder="https://mp.weixin.qq.com/s/..." @keyup.enter="resolveLink"/><button class="primary-button" :disabled="busy || !addUrl" @click="resolveLink">识别公众号</button></div>
@@ -297,7 +303,7 @@ async function notify(title: string, body: string) {
           <div v-for="source in bootstrap.sources" :key="source.id" class="source-row">
             <span class="source-avatar large">{{ sourceInitial(source.name) }}</span>
             <div class="source-info"><strong>{{ source.name }}</strong><span>{{ source.intro || '公众号内容' }}</span><small>{{ source.last_success_at ? '上次更新 ' + formatTime(source.last_success_at) : '等待首次更新' }}</small></div>
-            <span class="plain-status" :class="source.status">{{ source.status === 'limited' ? '暂不支持自动更新' : source.enabled ? '正在关注' : '已暂停' }}</span>
+            <span class="plain-status" :class="source.status">{{ source.status === 'limited' ? (bootstrap.connection.state === 'verification' ? '等待重新验证' : bootstrap.connection.state === 'cooldown' ? '冷却中' : '暂不支持自动更新') : source.enabled ? '正在关注' : '已暂停' }}</span>
             <div class="row-actions"><button @click="sync(source.id)">刷新</button><button @click="toggleSource(source)">{{ source.enabled ? '暂停' : '继续' }}</button><button class="danger-text" @click="removeSource(source)">删除</button></div>
           </div>
         </div>

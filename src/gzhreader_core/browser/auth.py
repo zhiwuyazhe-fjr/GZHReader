@@ -55,7 +55,7 @@ class WeReadLoginCapture:
         return bool(vid and vid != "0" and skey)
 
     @staticmethod
-    def _credential_snapshot(context, request, source_id: str) -> dict[str, str | float]:
+    def _credential_snapshot(context, request, source_id: str) -> dict[str, str | float | bool]:
         headers = request.all_headers()
         ticket = headers.get("x-wr-ticket", "")
         wpa = headers.get("x-wrpa-0", "")
@@ -80,7 +80,7 @@ class WeReadLoginCapture:
         if not self._running.acquire(blocking=False):
             return {"accepted": False, "message": "\u8fde\u63a5\u7a97\u53e3\u5df2\u7ecf\u6253\u5f00"}
         self._cancel.clear()
-        captured: dict[str, str | float] = {}
+        captured: dict[str, str | float | bool] = {}
         state = {"verified": False, "captcha_announced": False, "risk_limited": False, "last_error": "", "payload": None}
         emit("auth.progress", {"stage": "opening", "message": "\u6b63\u5728\u6253\u5f00\u5fae\u4fe1\u8bfb\u4e66"})
         try:
@@ -101,9 +101,6 @@ class WeReadLoginCapture:
                 if context is None:
                     raise RuntimeError("\u672a\u627e\u5230\u53ef\u7528\u7684 Edge \u6216 Chrome \u6d4f\u89c8\u5668")
                 try:
-                    context.add_init_script(
-                        "window.close = function(){ console.log('[GZHReader] ignored window.close during verification'); };"
-                    )
                     page = context.pages[0] if context.pages else context.new_page()
 
                     def capture_request(request) -> None:
@@ -132,6 +129,10 @@ class WeReadLoginCapture:
                                 snapshot = self._credential_snapshot(context, response.request, source_id)
                                 if snapshot:
                                     captured.update(snapshot)
+                                    # The captcha/WPA values belong to this successful browser request.
+                                    # Keep them only as session metadata; replaying them is what causes
+                                    # repeated verification and "sequence repeat" failures.
+                                    captured["authorization_consumed"] = True
                                 state["payload"] = payload
                                 state["verified"] = True
                                 return
@@ -147,7 +148,7 @@ class WeReadLoginCapture:
                                         "auth.progress",
                                         {
                                             "stage": "captcha",
-                                            "message": "请在浏览器中完成人机验证，完成前窗口不会关闭",
+                                            "message": "请在浏览器中完成人机验证，验证页成功后会自动关闭",
                                         },
                                     )
                                 return
