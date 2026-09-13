@@ -157,10 +157,10 @@ function applyTheme(theme?: string) {
 }
 async function reconnect(sourceId = '') {
   const id = sourceId || bootstrap.value.sources[0]?.id
-  if (!id) { page.value = 'sources'; message.value = '?????????'; return }
+  if (!id) { page.value = 'sources'; message.value = '请先添加一个公众号'; return }
   try {
     await core.call('auth.reconnect', { source_id: id })
-    message.value = '????????'
+    message.value = '已打开浏览器，请完成验证'
   } catch (error: any) {
     message.value = error.message
   }

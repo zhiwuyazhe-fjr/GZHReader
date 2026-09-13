@@ -5,6 +5,7 @@ import hashlib
 import html as html_module
 import logging
 import re
+import subprocess
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -122,6 +123,12 @@ class ArticleLinkResolver:
             from playwright.sync_api import Error as PlaywrightError
             from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
             from playwright.sync_api import sync_playwright
+            from ..browser.auth import (
+                browser_executable_candidates,
+                build_browser_command,
+                reserve_debug_port,
+                stop_browser_process,
+            )
         except Exception as exc:
             raise ValueError("无法打开本机浏览器，请确认 Edge 或 Chrome 可以正常使用") from exc
 
@@ -136,19 +143,53 @@ class ArticleLinkResolver:
         try:
             with sync_playwright() as playwright:
                 errors: list[str] = []
+                browser = None
+                browser_process = None
                 context = None
-                for launch in ({"channel": "msedge"}, {"channel": "chrome"}):
+                for executable in browser_executable_candidates():
+                    candidate_process = None
                     try:
-                        context = playwright.chromium.launch_persistent_context(
-                            str(profile_dir),
-                            headless=False,
-                            viewport={"width": 1080, "height": 760},
-                            args=["--disable-extensions", "--disable-sync", "--no-first-run"],
-                            **launch,
+                        debug_port = reserve_debug_port()
+                        candidate_process = subprocess.Popen(
+                            build_browser_command(executable, profile_dir, debug_port),
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
+                        endpoint = f"http://127.0.0.1:{debug_port}"
+                        connect_deadline = time.time() + 15
+                        last_error = ""
+                        while time.time() < connect_deadline:
+                            if candidate_process.poll() is not None:
+                                raise RuntimeError(
+                                    f"浏览器提前退出（代码 {candidate_process.returncode}）"
+                                )
+                            try:
+                                browser = playwright.chromium.connect_over_cdp(
+                                    endpoint,
+                                    timeout=1_500,
+                                )
+                                break
+                            except Exception as exc:
+                                last_error = str(exc)
+                                time.sleep(0.2)
+                        if browser is None:
+                            raise RuntimeError(last_error or "无法连接浏览器")
+                        if not browser.contexts:
+                            raise RuntimeError("浏览器没有可用的用户上下文")
+                        browser_process = candidate_process
+                        context = browser.contexts[0]
                         break
                     except Exception as exc:
-                        errors.append(str(exc))
+                        errors.append(f"{executable.name}: {exc}")
+                        if browser is not None:
+                            try:
+                                browser.close()
+                            except Exception:
+                                pass
+                            browser = None
+                        if candidate_process is not None:
+                            stop_browser_process(candidate_process)
                 if context is None:
                     logger.warning("Unable to launch Edge/Chrome for link resolution: %s", "; ".join(errors))
                     raise ValueError("未找到可用的 Edge 或 Chrome 浏览器")
@@ -192,7 +233,13 @@ class ArticleLinkResolver:
                         raise ValueError("验证等待超时，请重新识别并在浏览器中完成验证")
                     return last_html, last_url
                 finally:
-                    context.close()
+                    if browser is not None:
+                        try:
+                            browser.close()
+                        except Exception:
+                            logger.debug("Unable to close browser connection", exc_info=True)
+                    if browser_process is not None:
+                        stop_browser_process(browser_process)
         finally:
             if temporary_profile is not None:
                 temporary_profile.cleanup()
@@ -216,21 +263,40 @@ class ArticleLinkResolver:
     def _extract(self, html: str, final_url: str) -> dict[str, str]:
         soup = BeautifulSoup(html, "html.parser")
         search_html = html_module.unescape(html)
+        script_source = html_module.unescape(
+            "\n".join(node.decode_contents() for node in soup.find_all("script"))
+        )
 
-        def js(*names: str) -> str:
+        def js_value(*names: str, include_objects: bool = True) -> str:
             for name in names:
                 escaped = re.escape(name)
-                patterns = (
-                    rf"(?:var\s+|window\.)?{escaped}\s*=\s*['\"](.*?)['\"]\s*[;,]",
-                    rf"['\"]?{escaped}['\"]?\s*:\s*['\"](.*?)['\"]\s*[,}}]",
-                    rf"(?:var\s+|window\.)?{escaped}\s*=\s*(\d+)\s*[;,]",
-                    rf"['\"]?{escaped}['\"]?\s*:\s*(\d+)\s*[,}}]",
-                )
+                quoted = r"(?:'((?:\\.|[^'\\])*)'|\"((?:\\.|[^\"\\])*)\")"
+                identifier = rf"(?<![\w$-]){escaped}(?![\w$-])"
+                patterns = [
+                    rf"(?:\bvar\s+|\b(?:window|globalThis)\.)?{identifier}\s*=\s*(?:htmlDecode\(\s*)?{quoted}",
+                    rf"(?:\bvar\s+|\b(?:window|globalThis)\.)?{identifier}\s*=\s*(\d+)",
+                ]
+                if include_objects:
+                    patterns.extend(
+                        [
+                            rf"(?<![\w$-])['\"]?{escaped}['\"]?(?![\w$-])\s*:\s*{quoted}",
+                            rf"(?<![\w$-])['\"]?{escaped}['\"]?(?![\w$-])\s*:\s*(\d+)",
+                        ]
+                    )
                 for pattern in patterns:
-                    match = re.search(pattern, search_html, flags=re.S)
+                    match = re.search(pattern, script_source, flags=re.S)
                     if match:
-                        return self._clean_js_string(match.group(1))
+                        raw_value = next((group for group in match.groups() if group is not None), "")
+                        value = self._clean_js_string(raw_value)
+                        if value:
+                            return value
             return ""
+
+        def js(*names: str) -> str:
+            return js_value(*names, include_objects=True)
+
+        def js_assignment(*names: str) -> str:
+            return js_value(*names, include_objects=False)
 
         def meta(*, name: str = "", property_name: str = "") -> str:
             attrs = {"name": name} if name else {"property": property_name}
@@ -238,12 +304,30 @@ class ArticleLinkResolver:
             return str(node.get("content") or "").strip() if node else ""
 
         query = parse_qs(urlparse(final_url).query)
-        name_node = (
-            soup.select_one("#js_name")
-            or soup.select_one(".profile_nickname")
-            or soup.select_one(".wx_follow_nickname")
-            or soup.select_one(".account_nickname")
-        )
+        biz = js("biz", "__biz") or (query.get("__biz") or [""])[0]
+        if not biz:
+            biz_match = re.search(r"(?:[?&]|&amp;)__biz=([^&'\"\\\s<>]+)", search_html)
+            if biz_match:
+                biz = unquote(biz_match.group(1))
+
+        matching_profile = None
+        if biz:
+            try:
+                decoded_biz = self.decode_biz(biz)
+            except ValueError:
+                decoded_biz = ""
+            if decoded_biz:
+                for profile in soup.select("[data-id][data-nickname]"):
+                    try:
+                        profile_biz = self.decode_biz(str(profile.get("data-id") or ""))
+                    except ValueError:
+                        continue
+                    if profile_biz == decoded_biz:
+                        matching_profile = profile
+                        break
+
+        name_node = soup.select_one("#js_name")
+        profile_name_node = soup.select_one("#js_profile_qrcode .profile_nickname")
         title_node = soup.select_one("#activity-name") or soup.select_one("h1.rich_media_title")
         timestamp = js("ct", "publish_time", "create_time")
         published_meta = meta(property_name="article:published_time")
@@ -263,28 +347,75 @@ class ArticleLinkResolver:
             article_seed = hashlib.sha256(final_url.encode("utf-8")).hexdigest()[:24]
 
         cover = meta(property_name="og:image") or meta(name="twitter:image")
-        biz = js("biz", "__biz") or (query.get("__biz") or [""])[0]
-        if not biz:
-            biz_match = re.search(r"(?:[?&]|&amp;)__biz=([^&'\"\\\s<>]+)", search_html)
-            if biz_match:
-                biz = unquote(biz_match.group(1))
-
-        name = (
-            js("nickname", "user_name")
-            or (name_node.get_text(" ", strip=True) if name_node else "")
-            or meta(property_name="og:article:author")
-            or meta(name="author")
+        name = self._first_valid_account_name(
+            name_node.get_text(" ", strip=True) if name_node else "",
+            meta(property_name="og:article:author"),
+            meta(name="author"),
+            str(matching_profile.get("data-nickname") or "") if matching_profile else "",
+            profile_name_node.get_text(" ", strip=True) if profile_name_node else "",
+            js_assignment("nickname"),
+        )
+        intro = self._clean_metadata_text(
+            str(matching_profile.get("data-signature") or "") if matching_profile else "",
+            500,
+        ) or self._clean_metadata_text(
+            js_assignment("profile_signature", "profile_signature_new")
+            or meta(name="description")
+            or meta(property_name="og:description"),
+            500,
+        )
+        avatar = (
+            str(matching_profile.get("data-headimg") or "").strip() if matching_profile else ""
+        ) or js_assignment("ori_head_img_url", "head_img", "round_head_img") or cover
+        title = self._first_valid_title(
+            title_node.get_text(" ", strip=True) if title_node else "",
+            meta(property_name="og:title"),
+            js_assignment("msg_title"),
         )
         return {
             "biz": biz,
             "name": name,
-            "intro": js("profile_signature", "profile_signature_new") or meta(name="description") or meta(property_name="og:description"),
-            "avatar": js("ori_head_img_url", "head_img", "round_head_img") or cover,
-            "title": js("msg_title") or (title_node.get_text(" ", strip=True) if title_node else "") or meta(property_name="og:title"),
+            "intro": intro,
+            "avatar": avatar,
+            "title": title,
             "cover": cover,
             "article_id": article_seed,
             "published_at": published_at,
         }
+
+    @classmethod
+    def _first_valid_account_name(cls, *values: str) -> str:
+        for raw_value in values:
+            value = cls._clean_metadata_text(raw_value, 80)
+            lowered = value.casefold()
+            if not value or not re.search(r"[\w\u3400-\u9fff]", value):
+                continue
+            if lowered in {"nickname", "user_name", "data-miniprogram-nickname"}:
+                continue
+            if lowered.startswith("data-"):
+                continue
+            if any(marker in lowered for marker in ('<', '>', '=\"', "='", "</", "function ", "document.", ".html(", "var ")):
+                continue
+            return value
+        return ""
+
+    @classmethod
+    def _first_valid_title(cls, *values: str) -> str:
+        for raw_value in values:
+            value = cls._clean_metadata_text(raw_value, 240)
+            lowered = value.casefold()
+            if not value:
+                continue
+            if any(marker in lowered for marker in (".html(", "var msg_", "document.", "<script", "</")):
+                continue
+            return value
+        return ""
+
+    @staticmethod
+    def _clean_metadata_text(value: str, max_length: int) -> str:
+        normalized = html_module.unescape(str(value or "")).replace("\x00", " ")
+        normalized = " ".join(normalized.split()).strip()
+        return normalized if len(normalized) <= max_length else ""
 
     @staticmethod
     def _clean_js_string(value: str) -> str:
