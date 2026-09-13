@@ -58,6 +58,13 @@ class ReaderService:
         result = SyncResult()
         job_id = self.storage.start_job("sync", source_id)
         try:
+            connection = self.storage.connection_state("weread") or {}
+            if connection.get("state") == "verification" and connection.get("reconnect_required"):
+                message = str(connection.get("message") or "需要在浏览器中重新验证访问")
+                payload = result.to_dict()
+                self.storage.finish_job(job_id, "completed", payload)
+                emit("sync.skipped", {"reason": "verification_required", "message": message})
+                return payload
             rows = [
                 row for row in self.storage.sources()
                 if row["enabled"]
@@ -131,11 +138,15 @@ class ReaderService:
                     self._credential_notified = False
                 except WeReadError as exc:
                     self.provider.mark_error(exc)
-                    if exc.cooldown:
+                    if exc.verification_required:
+                        delay = 24 * 60
+                        self.storage.set_connection_state("weread", "verification", str(exc), True)
+                        emit("verification.required", {"source_id": source.id, "message": str(exc)})
+                        stop_for_auth = True
+                    elif exc.cooldown:
                         delay = exc.cooldown_minutes
                         cooldown_until = (datetime.now(timezone.utc) + timedelta(minutes=delay)).isoformat()
                         if exc.reconnect:
-                            self.provider.vault.clear("weread")
                             stop_for_auth = True
                         self.storage.set_connection_state(
                             "weread",
@@ -163,7 +174,12 @@ class ReaderService:
                         delay = 60
                     else:
                         delay = self._network_backoff(int(row.get("failure_count") or 0))
-                    self.storage.source_sync_failure(source.id, str(exc), delay, cooldown=exc.cooldown)
+                    self.storage.source_sync_failure(
+                        source.id,
+                        str(exc),
+                        delay,
+                        cooldown=exc.cooldown or exc.verification_required,
+                    )
                     result.errors.append(f"{source.name}：{exc}")
                 except Exception as exc:
                     delay = self._network_backoff(int(row.get("failure_count") or 0))

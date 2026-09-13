@@ -56,6 +56,56 @@ def test_extracts_modern_metadata_and_embedded_biz():
     assert value["intro"] == "Account description"
 
 
+def test_metadata_ignores_embedded_nickname_attributes_and_script_fragments():
+    resolver = ArticleLinkResolver()
+    html = """
+    <html><head>
+      <meta property="og:article:author" content="权威公众号">
+      <meta property="og:title" content="权威标题">
+    </head><body>
+      <a data-miniprogram-nickname="别的小程序">embedded</a>
+      <script>
+        var nickname = '' || '';
+        var embedded = '<span data-miniprogram-nickname="别的公众号">card</span>';
+        var msg_title = '真实标题'.html(false);
+        var biz = 'Mzg5Mjc3MjIyMA==';
+      </script>
+    </body></html>
+    """
+
+    value = resolver._extract(html, "https://mp.weixin.qq.com/s/example")
+
+    assert value["name"] == "权威公众号"
+    assert value["title"] == "权威标题"
+
+
+def test_metadata_uses_only_profile_card_matching_article_biz():
+    resolver = ArticleLinkResolver()
+    html = """
+    <html><body>
+      <mp-common-profile data-id="MzIyMzA5NjEyMA==" data-nickname="别的公众号"></mp-common-profile>
+      <mp-common-profile
+        data-id="MzIzNjc1NzUzMw=="
+        data-nickname="量子位"
+        data-signature="追踪人工智能新趋势，关注科技行业新突破"
+        data-headimg="https://img/qbit.png">
+      </mp-common-profile>
+      <script>
+        var biz = 'MzIzNjc1NzUzMw==';
+        var nickname = '量子位\" data-alias=\"QbitAI\" data-from=\"0';
+        var msg_title = '刚刚，GPT-6正式发布！'.html(false);
+      </script>
+    </body></html>
+    """
+
+    value = resolver._extract(html, "https://mp.weixin.qq.com/s/example")
+
+    assert value["name"] == "量子位"
+    assert value["intro"] == "追踪人工智能新趋势，关注科技行业新突破"
+    assert value["avatar"] == "https://img/qbit.png"
+    assert value["title"] == "刚刚，GPT-6正式发布！"
+
+
 def test_captcha_response_triggers_browser_fallback(monkeypatch):
     resolver = ArticleLinkResolver()
     captcha_html = '<html><script>var poc_token = "token";</script><div>\u8bf7\u5b8c\u6210\u9a8c\u8bc1</div></html>'

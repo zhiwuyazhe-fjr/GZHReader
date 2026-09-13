@@ -36,7 +36,7 @@ class ArticleRecord:
 
 @dataclass(slots=True)
 class ProviderHealth:
-    state: Literal["ready", "disconnected", "cooldown", "error"]
+    state: Literal["ready", "disconnected", "verification", "cooldown", "error"]
     message: str
     reconnect_required: bool = False
 

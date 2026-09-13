@@ -25,12 +25,14 @@ class WeReadError(RuntimeError):
         reconnect: bool = False,
         cooldown: bool = False,
         cooldown_minutes: int = 360,
+        verification_required: bool = False,
     ):
         super().__init__(message)
         self.code = str(code)
         self.reconnect = reconnect
         self.cooldown = cooldown
         self.cooldown_minutes = max(int(cooldown_minutes), 1)
+        self.verification_required = verification_required
 
 
 def is_risk_control_message(message: str) -> bool:
@@ -93,7 +95,12 @@ def raise_response_error(payload: dict) -> None:
                 cooldown=True,
                 cooldown_minutes=24 * 60,
             )
-        raise WeReadError(code, "需要重新完成人机验证", reconnect=True)
+        raise WeReadError(
+            code,
+            "访问授权已过期，请在浏览器中重新验证",
+            reconnect=True,
+            verification_required=True,
+        )
     if code in AUTH_CODES:
         raise WeReadError(code, "登录状态已失效", reconnect=True)
     if code in RATE_LIMIT_CODES:
@@ -195,6 +202,8 @@ class WeReadProvider:
     def mark_error(self, error: WeReadError) -> None:
         if error.cooldown:
             self._health = ProviderHealth("cooldown", str(error), error.reconnect)
+        elif error.verification_required:
+            self._health = ProviderHealth("verification", str(error), True)
         elif error.reconnect:
             self._health = ProviderHealth("disconnected", "登录状态已失效", True)
         else:
@@ -237,6 +246,13 @@ class WeReadProvider:
 
     def _credential_headers(self, include_ticket: bool = False) -> dict[str, str]:
         credentials = self.credentials()
+        if include_ticket and credentials.get("authorization_consumed"):
+            raise WeReadError(
+                -2041,
+                "访问授权已使用，请在浏览器中重新确认后再刷新",
+                reconnect=True,
+                verification_required=True,
+            )
         ticket = str(credentials.get("auth_header_value") or credentials.get("ticket") or "")
         return self._headers(
             str(credentials.get("cookie") or ""),

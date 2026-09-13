@@ -12,10 +12,12 @@ from gzhreader_core.providers.weread import WeReadError, WeReadProvider
 class FakeClient:
     pages = []
     content = ""
+    calls = 0
     def __init__(self, **kwargs): pass
     def __enter__(self): return self
     def __exit__(self, *args): pass
     def get(self, url, params, headers):
+        self.__class__.calls += 1
         if url.endswith("/articles"):
             payload = self.pages.pop(0)
             return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
@@ -49,6 +51,8 @@ def test_auth_error_is_classified(tmp_path):
         provider.list_articles(SourceProfile("MP_WXS_1", "公众号"))
     except WeReadError as exc:
         assert exc.reconnect
+        assert exc.verification_required
+        assert not exc.cooldown
     else:
         raise AssertionError("auth error was not raised")
 
@@ -106,3 +110,26 @@ def test_prefetched_browser_page_avoids_immediate_http_replay(tmp_path):
     batch = provider.list_articles(SourceProfile("MP_WXS_1", "Account"), limit=20)
     assert [item.origin_id for item in batch.articles] == ["browser-result"]
     assert batch.pages_scanned == 1
+
+
+def test_consumed_browser_authorization_is_not_replayed(tmp_path):
+    vault = CredentialVault(tmp_path)
+    vault.save(
+        "weread",
+        {
+            "cookie": "wr_vid=1; wr_skey=skey",
+            "ticket": "already-used-ticket",
+            "authorization_consumed": True,
+        },
+    )
+    FakeClient.calls = 0
+    provider = WeReadProvider(vault, client_factory=FakeClient, sleep=lambda _: None)
+
+    try:
+        provider.list_articles(SourceProfile("MP_WXS_1", "公众号"))
+    except WeReadError as exc:
+        assert exc.verification_required
+    else:
+        raise AssertionError("consumed browser authorization was replayed")
+
+    assert FakeClient.calls == 0
