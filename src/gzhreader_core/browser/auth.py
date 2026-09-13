@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import logging
+import os
+import socket
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -12,6 +15,73 @@ from ..credentials import CredentialVault
 from ..providers.weread import BASE_URL, build_mp_reader_url, is_risk_control_message
 
 logger = logging.getLogger(__name__)
+
+
+def browser_executable_candidates() -> list[Path]:
+    """Return installed Chromium browsers without asking Playwright to launch them."""
+    candidates: list[Path] = []
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    program_files = os.environ.get("PROGRAMFILES")
+    program_files_x86 = os.environ.get("PROGRAMFILES(X86)")
+    if program_files_x86:
+        candidates.append(Path(program_files_x86) / "Microsoft/Edge/Application/msedge.exe")
+    if program_files:
+        candidates.extend(
+            [
+                Path(program_files) / "Microsoft/Edge/Application/msedge.exe",
+                Path(program_files) / "Google/Chrome/Application/chrome.exe",
+            ]
+        )
+    if local_app_data:
+        candidates.extend(
+            [
+                Path(local_app_data) / "Microsoft/Edge/Application/msedge.exe",
+                Path(local_app_data) / "Google/Chrome/Application/chrome.exe",
+            ]
+        )
+    if program_files_x86:
+        candidates.append(Path(program_files_x86) / "Google/Chrome/Application/chrome.exe")
+
+    result: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate).casefold()
+        if key not in seen and candidate.is_file():
+            seen.add(key)
+            result.append(candidate)
+    return result
+
+
+def build_browser_command(executable: Path, profile_dir: Path, debug_port: int) -> list[str]:
+    """Build a minimal, user-visible browser command for manual verification."""
+    return [
+        str(executable),
+        "--remote-debugging-address=127.0.0.1",
+        f"--remote-debugging-port={debug_port}",
+        f"--user-data-dir={profile_dir}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--new-window",
+        "--window-size=1120,760",
+        "about:blank",
+    ]
+
+
+def reserve_debug_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def stop_browser_process(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
 
 
 def classify_articles_payload(payload: object) -> tuple[str, int, str]:
@@ -86,20 +156,58 @@ class WeReadLoginCapture:
         try:
             with sync_playwright() as playwright:
                 errors: list[str] = []
+                browser = None
+                browser_process = None
                 context = None
-                for launch in ({"channel": "msedge"}, {"channel": "chrome"}):
+                self.profile_dir.mkdir(parents=True, exist_ok=True)
+                for executable in browser_executable_candidates():
+                    candidate_process = None
                     try:
-                        context = playwright.chromium.launch_persistent_context(
-                            str(self.profile_dir),
-                            headless=False,
-                            viewport={"width": 1120, "height": 760},
-                            **launch,
+                        debug_port = reserve_debug_port()
+                        candidate_process = subprocess.Popen(
+                            build_browser_command(executable, self.profile_dir, debug_port),
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
+                        endpoint = f"http://127.0.0.1:{debug_port}"
+                        connect_deadline = time.time() + 15
+                        last_error = ""
+                        while time.time() < connect_deadline:
+                            if candidate_process.poll() is not None:
+                                raise RuntimeError(
+                                    f"浏览器提前退出（代码 {candidate_process.returncode}）"
+                                )
+                            try:
+                                browser = playwright.chromium.connect_over_cdp(endpoint, timeout=1_500)
+                                break
+                            except Exception as exc:
+                                last_error = str(exc)
+                                time.sleep(0.2)
+                        if browser is None:
+                            raise RuntimeError(last_error or "无法连接浏览器")
+                        if not browser.contexts:
+                            raise RuntimeError("浏览器没有可用的用户上下文")
+                        browser_process = candidate_process
+                        context = browser.contexts[0]
+                        logger.info("Connected to user browser for verification: %s", executable.name)
                         break
                     except Exception as exc:
-                        errors.append(str(exc))
+                        errors.append(f"{executable.name}: {exc}")
+                        if browser is not None:
+                            try:
+                                browser.close()
+                            except Exception:
+                                pass
+                            browser = None
+                        if candidate_process is not None:
+                            stop_browser_process(candidate_process)
                 if context is None:
-                    raise RuntimeError("\u672a\u627e\u5230\u53ef\u7528\u7684 Edge \u6216 Chrome \u6d4f\u89c8\u5668")
+                    details = "; ".join(errors[-2:])
+                    raise RuntimeError(
+                        "未能启动本机 Edge 或 Chrome 浏览器"
+                        + (f"：{details}" if details else "")
+                    )
                 try:
                     page = context.pages[0] if context.pages else context.new_page()
 
@@ -163,7 +271,8 @@ class WeReadLoginCapture:
                         browser_page.on("request", capture_request)
                         browser_page.on("response", capture_response)
 
-                    attach_page(page)
+                    for existing_page in context.pages:
+                        attach_page(existing_page)
                     context.on("page", attach_page)
                     page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30_000)
                     login_deadline = time.time() + timeout_seconds
@@ -236,6 +345,12 @@ class WeReadLoginCapture:
                         "articles_payload": state["payload"],
                     }
                 finally:
-                    context.close()
+                    if browser is not None:
+                        try:
+                            browser.close()
+                        except Exception:
+                            logger.debug("Unable to close browser connection", exc_info=True)
+                    if browser_process is not None:
+                        stop_browser_process(browser_process)
         finally:
             self._running.release()

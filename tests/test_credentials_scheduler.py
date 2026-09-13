@@ -3,7 +3,11 @@ from __future__ import annotations
 import inspect
 from datetime import date, datetime, timedelta
 
-from gzhreader_core.browser.auth import WeReadLoginCapture, classify_articles_payload
+from gzhreader_core.browser.auth import (
+    WeReadLoginCapture,
+    build_browser_command,
+    classify_articles_payload,
+)
 from gzhreader_core.credentials import CredentialVault
 from gzhreader_core.scheduler import Scheduler
 from gzhreader_core.storage import Storage
@@ -41,3 +45,18 @@ def test_weread_browser_response_classification():
 def test_verification_flow_does_not_override_browser_window_close():
     source = inspect.getsource(WeReadLoginCapture.run)
     assert "window.close" not in source
+
+
+def test_manual_verification_browser_uses_minimal_cdp_command(tmp_path):
+    command = build_browser_command(
+        tmp_path / "msedge.exe",
+        tmp_path / "profile",
+        32123,
+    )
+
+    assert "--remote-debugging-address=127.0.0.1" in command
+    assert "--remote-debugging-port=32123" in command
+    assert f"--user-data-dir={tmp_path / 'profile'}" in command
+    assert "--no-sandbox" not in command
+    assert "--disable-extensions" not in command
+    assert "--enable-automation" not in command
