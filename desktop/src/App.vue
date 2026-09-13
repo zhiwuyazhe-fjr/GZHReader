@@ -331,8 +331,6 @@ async function notify(title: string, body: string) {
           </aside>
           <article v-if="currentBriefing" class="briefing-document">
             <div class="briefing-actions"><button class="text-button" @click="generateBriefing">重新生成</button><button class="text-button" @click="openBriefingFolder">打开文件目录</button></div>
-            <div class="briefing-heading"><span>每日简报</span><strong>{{ currentBriefing.day }}</strong></div>
-            <p v-if="currentBriefing.overview" class="briefing-overview">{{ currentBriefing.overview }}</p>
             <div class="briefing-markdown" @click="openBriefingLink" v-html="renderedBriefing"></div>
           </article>
         </div>
