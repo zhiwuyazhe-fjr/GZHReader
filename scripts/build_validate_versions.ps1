@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Tag
 )
 
@@ -8,14 +8,14 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 function Read-VersionMatch {
     param([string]$RelativePath, [string]$Pattern)
 
-    $Content = Get-Content -LiteralPath (Join-Path $RepoRoot $RelativePath) -Raw
+    $Content = Get-Content -LiteralPath (Join-Path $RepoRoot $RelativePath) -Raw -Encoding UTF8
     $Match = [regex]::Match($Content, $Pattern)
     if (-not $Match.Success) { throw "无法读取版本：$RelativePath" }
     return $Match.Groups[1].Value
 }
 
-$TauriConfig = Get-Content -LiteralPath (Join-Path $RepoRoot "desktop\src-tauri\tauri.conf.json") -Raw | ConvertFrom-Json
-$DesktopPackage = Get-Content -LiteralPath (Join-Path $RepoRoot "desktop\package.json") -Raw | ConvertFrom-Json
+$TauriConfig = Get-Content -LiteralPath (Join-Path $RepoRoot "desktop\src-tauri\tauri.conf.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$DesktopPackage = Get-Content -LiteralPath (Join-Path $RepoRoot "desktop\package.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 $Versions = [ordered]@{
     "tauri.conf.json" = $TauriConfig.version
     "package.json" = $DesktopPackage.version

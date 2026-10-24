@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate release versions
-        shell: powershell
+        shell: pwsh
         run: |
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
             .\scripts\build_validate_versions.ps1 -Tag $env:GITHUB_REF_NAME
@@ -55,7 +55,7 @@ jobs:
         run: npm test
 
       - name: Build Python Sidecar
-        shell: powershell
+        shell: pwsh
         run: .\scripts\build_sidecar.ps1
 
       - name: Build and publish Tauri bundles

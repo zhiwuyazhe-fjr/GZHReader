@@ -70,6 +70,8 @@ npm 官方注册表审计曾报告 Vue 的 server-renderer、markdown-it、nanoi
 | 审查阶段冻结 EXE 隔离运行 | bootstrap、纽约时区设置、空日简报导出、正常 shutdown 全部通过 |
 | `git diff --check` | 通过 |
 
+PR 的首轮 GitHub Actions 在测试前因 Windows PowerShell 5.1 将无 BOM 中文脚本按 ANSI 解码而失败。已为版本校验脚本加入 UTF-8 BOM，显式以 UTF-8 读取版本文件，并将 CI 的脚本步骤改用 `pwsh`。本机 Windows PowerShell 5.1 下三个构建脚本语法检查、正确标签通过及错误标签拒绝均已验证，PowerShell 7 的版本校验也通过。该差异符合 [Microsoft 的脚本字符编码说明](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding?view=powershell-7.5)。
+
 浏览器在 1180/1280 像素桌面与 390 像素窄屏验证：
 
 - 正文专有词“资料库”可命中对应文章。

@@ -24,7 +24,7 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - name: Validate versions
-        shell: powershell
+        shell: pwsh
         run: .\scripts\build_validate_versions.ps1
       - name: Install core dependencies
         run: python -m pip install -e ".[dev]"
