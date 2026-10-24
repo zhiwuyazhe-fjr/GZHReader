@@ -18,6 +18,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate release versions
+        shell: powershell
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            .\scripts\build_validate_versions.ps1 -Tag $env:GITHUB_REF_NAME
+          } else {
+            .\scripts\build_validate_versions.ps1
+          }
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -25,7 +34,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
@@ -41,9 +50,9 @@ jobs:
         working-directory: desktop
         run: npm ci
 
-      - name: Build frontend
+      - name: Run desktop regression tests
         working-directory: desktop
-        run: npm run build
+        run: npm test
 
       - name: Build Python Sidecar
         shell: powershell

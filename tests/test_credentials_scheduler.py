@@ -3,6 +3,8 @@ from __future__ import annotations
 import inspect
 from datetime import date, datetime, timedelta
 
+import pytest
+
 from gzhreader_core.browser.auth import (
     WeReadLoginCapture,
     build_browser_command,
@@ -60,3 +62,91 @@ def test_manual_verification_browser_uses_minimal_cdp_command(tmp_path):
     assert "--no-sandbox" not in command
     assert "--disable-extensions" not in command
     assert "--enable-automation" not in command
+
+
+def test_scheduler_accepts_legacy_naive_refresh_time(tmp_path):
+    storage = Storage(tmp_path / "data.db")
+    storage.update_settings({"next_refresh_at": "2000-01-01T00:00:00", "briefing_enabled": False})
+    calls = []
+    scheduler = Scheduler(storage, lambda: calls.append("sync") or {}, lambda: {}, lambda *_: None)
+    scheduler._tick()
+    assert calls == ["sync"]
+    assert datetime.fromisoformat(storage.settings()["next_refresh_at"]).tzinfo is not None
+
+
+def test_scheduler_measures_interval_from_completion(tmp_path, monkeypatch):
+    storage = Storage(tmp_path / "data.db")
+    storage.update_settings({"refresh_minutes": 15, "next_refresh_at": "2000-01-01T00:00:00+00:00", "briefing_enabled": False})
+    now = storage.local_now()
+    clock = [now]
+
+    def slow_sync():
+        clock[0] += timedelta(minutes=20)
+        return {}
+
+    scheduler = Scheduler(storage, slow_sync, lambda: {}, lambda *_: None)
+    monkeypatch.setattr(scheduler, "_now", lambda settings=None: clock[0])
+    monkeypatch.setattr("gzhreader_core.scheduler.random.randint", lambda *_: 0)
+    scheduler._tick()
+    assert datetime.fromisoformat(storage.settings()["next_refresh_at"]) == (now + timedelta(minutes=35)).replace(microsecond=0)
+
+
+def test_scheduler_preserves_settings_changed_during_sync(tmp_path):
+    storage = Storage(tmp_path / "data.db")
+    storage.update_settings({"next_refresh_at": "2000-01-01T00:00:00+00:00", "briefing_enabled": False})
+    scheduler = None
+
+    def pause_during_sync():
+        storage.update_settings({"refresh_paused": True})
+        scheduler.reschedule()
+        return {}
+
+    scheduler = Scheduler(storage, pause_during_sync, lambda: {}, lambda *_: None)
+    scheduler._tick()
+    assert storage.settings()["next_refresh_at"] == ""
+
+
+@pytest.mark.parametrize("value", ["25:00", "12:90", "invalid", "12:30:00"])
+def test_invalid_legacy_briefing_time_is_not_due(tmp_path, monkeypatch, value):
+    storage = Storage(tmp_path / "data.db")
+    settings = {**storage.settings(), "briefing_time": value}
+    monkeypatch.setattr(storage, "settings", lambda: settings)
+    scheduler = Scheduler(storage, lambda: {}, lambda: {}, lambda *_: None)
+    assert scheduler.briefing_due_now() is False
+
+
+def test_failed_briefing_is_retried_with_backoff(tmp_path, monkeypatch):
+    storage = Storage(tmp_path / "data.db")
+    storage.update_settings({"refresh_minutes": 0, "briefing_time": "00:00"})
+    calls = []
+
+    def failed_briefing():
+        calls.append("briefing")
+        raise RuntimeError("temporarily unavailable")
+
+    scheduler = Scheduler(storage, lambda: {}, failed_briefing, lambda *_: None)
+    clock = [storage.local_now()]
+    monkeypatch.setattr(scheduler, "_now", lambda settings=None: clock[0])
+    with pytest.raises(RuntimeError):
+        scheduler._tick()
+    scheduler._tick()
+    assert calls == ["briefing"]
+    clock[0] += timedelta(minutes=6)
+    with pytest.raises(RuntimeError):
+        scheduler._tick()
+    assert calls == ["briefing", "briefing"]
+
+
+def test_stopped_scheduler_does_not_launch_briefing_after_sync(tmp_path):
+    storage = Storage(tmp_path / "data.db")
+    storage.update_settings({"next_refresh_at": "2000-01-01T00:00:00+00:00", "briefing_time": "00:00"})
+    calls = []
+    scheduler = None
+
+    def stop_during_sync():
+        scheduler.stop_event.set()
+        return {}
+
+    scheduler = Scheduler(storage, stop_during_sync, lambda: calls.append("briefing"), lambda *_: None)
+    scheduler._tick()
+    assert calls == []

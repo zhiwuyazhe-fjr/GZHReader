@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import sqlite3
+import tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .models import ArticleRecord, SourceProfile
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 REFRESH_OPTIONS = {0, 15, 30, 60, 120, 240}
+
+
 class ClosingConnection(sqlite3.Connection):
     def __exit__(self, exc_type, exc_value, traceback):
         try:
@@ -110,9 +113,6 @@ class Storage:
                     UNIQUE(source_id, origin_id),
                     UNIQUE(url)
                 );
-                CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_articles_source_published ON articles(source_id, published_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_articles_content_status ON articles(content_status);
                 CREATE TABLE IF NOT EXISTS briefings(
                     day TEXT PRIMARY KEY,
                     overview TEXT NOT NULL DEFAULT '',
@@ -143,6 +143,16 @@ class Storage:
             )
             # These additions only upgrade databases created by pre-release v3 builds.
             self._ensure_columns(db)
+            previous_version = db.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()
+            db.executescript(
+                """
+                DROP INDEX IF EXISTS idx_articles_published;
+                DROP INDEX IF EXISTS idx_articles_source_published;
+                CREATE INDEX IF NOT EXISTS idx_articles_content_status ON articles(content_status);
+                CREATE INDEX IF NOT EXISTS idx_articles_instant ON articles(julianday(published_at) DESC, id DESC);
+                CREATE INDEX IF NOT EXISTS idx_articles_source_instant ON articles(source_id, julianday(published_at) DESC, id DESC);
+                """
+            )
             db.execute(
                 "INSERT INTO schema_meta(key,value) VALUES('schema_version',?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -153,7 +163,7 @@ class Storage:
                     "INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)",
                     (key, json.dumps(value, ensure_ascii=False)),
                 )
-            self._init_fts(db)
+            self._init_fts(db, rebuild=not previous_version or previous_version[0] != str(SCHEMA_VERSION))
 
     def _ensure_columns(self, db: sqlite3.Connection) -> None:
         additions = {
@@ -184,8 +194,10 @@ class Storage:
             for name, declaration in columns.items():
                 if name not in existing:
                     db.execute(f'ALTER TABLE {table} ADD COLUMN "{name}" {declaration}')
+                    if table == "articles" and name == "content_status":
+                        db.execute("UPDATE articles SET content_status='done' WHERE length(trim(content))>0")
 
-    def _init_fts(self, db: sqlite3.Connection) -> None:
+    def _init_fts(self, db: sqlite3.Connection, rebuild: bool = False) -> None:
         try:
             existing = db.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='article_fts'"
@@ -205,9 +217,10 @@ class Storage:
                 END;
                 """
             )
-            # Contentless FTS is maintained explicitly so source_name can be indexed.
+            # FTS is maintained explicitly so source_name can be indexed.
             count = db.execute("SELECT COUNT(*) FROM article_fts").fetchone()[0]
-            if count == 0:
+            if rebuild or count == 0:
+                db.execute("DELETE FROM article_fts")
                 db.execute(
                     "INSERT INTO article_fts(rowid,title,content,summary,source_name) "
                     "SELECT a.id,a.title,a.content,a.summary,s.name FROM articles a JOIN sources s ON s.id=a.source_id"
@@ -222,11 +235,16 @@ class Storage:
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         today = date.today().isoformat()
         target = self.backup_dir / f"gzhreader-{today}.db"
-        temporary = target.with_suffix(".tmp")
-        temporary.unlink(missing_ok=True)
-        with self.connect() as source, sqlite3.connect(temporary, factory=ClosingConnection) as destination:
-            source.backup(destination)
-        temporary.replace(target)
+        if target.exists():
+            return
+        with tempfile.NamedTemporaryFile(prefix=f".gzhreader-{today}-", suffix=".tmp", dir=self.backup_dir, delete=False) as handle:
+            temporary = Path(handle.name)
+        try:
+            with self.connect() as source, sqlite3.connect(temporary, factory=ClosingConnection) as destination:
+                source.backup(destination)
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
         backups = sorted(self.backup_dir.glob("gzhreader-*.db"), reverse=True)
         for old in backups[7:]:
             old.unlink(missing_ok=True)
@@ -275,6 +293,14 @@ class Storage:
                 """,
                 (source.id, source.name, source.avatar, source.intro, source.sample_url, source.status, now),
             )
+            try:
+                db.execute(
+                    "UPDATE article_fts SET source_name=? "
+                    "WHERE rowid IN (SELECT id FROM articles WHERE source_id=?) AND source_name<>?",
+                    (source.name, source.id, source.name),
+                )
+            except sqlite3.OperationalError:
+                pass
 
     def source(self, source_id: str) -> dict[str, Any] | None:
         with self.connect() as db:
@@ -337,52 +363,55 @@ class Storage:
             )
 
     def source_due(self, row: dict[str, Any], now: datetime | None = None) -> bool:
-        value = row.get("next_attempt_at") or row.get("cooldown_until") or ""
-        if not value:
-            return True
-        try:
-            target = datetime.fromisoformat(value)
-            current = now or datetime.now(target.tzinfo or timezone.utc)
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        for key in ("next_attempt_at", "cooldown_until"):
+            value = row.get(key)
+            if not value:
+                continue
+            try:
+                target = datetime.fromisoformat(value)
+            except (TypeError, ValueError):
+                continue
             if target.tzinfo is None:
                 target = target.replace(tzinfo=timezone.utc)
-            if current.tzinfo is None:
-                current = current.replace(tzinfo=timezone.utc)
-            return current >= target
-        except ValueError:
-            return True
+            if current < target:
+                return False
+        return True
 
     def insert_article(self, article: ArticleRecord, content_status: str | None = None) -> tuple[int, bool]:
         status = content_status or ("done" if article.content.strip() else "pending")
         with self.connect() as db:
-            try:
-                cursor = db.execute(
-                    """
-                    INSERT INTO articles(
-                        source_id,origin_id,title,author,url,published_at,cover,digest,content,content_status
-                    ) VALUES(?,?,?,?,?,?,?,?,?,?)
-                    """,
-                    (
-                        article.source_id,
-                        article.origin_id,
-                        article.title,
-                        article.author,
-                        article.url,
-                        article.published_at.isoformat(),
-                        article.cover,
-                        article.digest,
-                        article.content,
-                        status,
-                    ),
-                )
+            cursor = db.execute(
+                """
+                INSERT INTO articles(
+                    source_id,origin_id,title,author,url,published_at,cover,digest,content,content_status
+                ) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING
+                """,
+                (
+                    article.source_id,
+                    article.origin_id,
+                    article.title,
+                    article.author,
+                    article.url,
+                    article.published_at.isoformat(),
+                    article.cover,
+                    article.digest,
+                    article.content,
+                    status,
+                ),
+            )
+            if cursor.rowcount:
                 article_id = int(cursor.lastrowid)
                 self._fts_upsert(db, article_id)
                 return article_id, True
-            except sqlite3.IntegrityError:
-                row = db.execute(
-                    "SELECT id FROM articles WHERE source_id=? AND origin_id=? OR url=? LIMIT 1",
-                    (article.source_id, article.origin_id, article.url),
-                ).fetchone()
-                return (int(row[0]) if row else 0), False
+            row = db.execute(
+                "SELECT id FROM articles WHERE (source_id=? AND origin_id=?) OR url=? "
+                "ORDER BY CASE WHEN source_id=? AND origin_id=? THEN 0 ELSE 1 END, id LIMIT 1",
+                (article.source_id, article.origin_id, article.url, article.source_id, article.origin_id),
+            ).fetchone()
+            return (int(row[0]) if row else 0), False
 
     def update_content(self, article_id: int, content: str, error: str = "") -> None:
         status = "done" if content.strip() else "pending"
@@ -404,60 +433,79 @@ class Storage:
                 f"""
                 SELECT a.*,s.name source_name,s.avatar source_avatar
                 FROM articles a JOIN sources s ON s.id=a.source_id
-                WHERE {where} ORDER BY a.published_at DESC LIMIT ?
+                WHERE {where} ORDER BY julianday(a.published_at) DESC, a.id DESC LIMIT ?
                 """,
-                (*args, limit),
+                (*args, max(0, int(limit))),
             ).fetchall()
         return [self._article_dict(row) for row in rows]
 
-    def articles(self, source_id: str = "", unread_only: bool = False, query: str = "", limit: int = 200) -> list[dict[str, Any]]:
-        clauses: list[str] = []
+    def pending_summary(self, limit: int = 20, source_id: str = "") -> list[dict[str, Any]]:
+        clauses = ["a.content_status='done'", "a.summary_status!='done'"]
         args: list[Any] = []
         if source_id:
             clauses.append("a.source_id=?")
             args.append(source_id)
-        if unread_only:
-            clauses.append("a.is_read=0")
-        if query.strip():
-            tokens = [token for token in re.split(r"\s+", query.strip()) if token]
-            match = " AND ".join('"' + token.replace('"', '""') + '"' for token in tokens)
-            if match:
-                try:
-                    return self._fts_articles(source_id, unread_only, match, limit)
-                except sqlite3.OperationalError:
-                    clauses.append("(a.title LIKE ? OR a.content LIKE ? OR a.summary LIKE ? OR s.name LIKE ?)")
-                    args.extend([f"%{query}%"] * 4)
-        where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self.connect() as db:
             rows = db.execute(
-                f"""
-                SELECT a.*,s.name source_name,s.avatar source_avatar
-                FROM articles a JOIN sources s ON s.id=a.source_id{where}
-                ORDER BY a.published_at DESC LIMIT ?
-                """,
-                (*args, limit),
+                "SELECT a.*,s.name source_name,s.avatar source_avatar "
+                "FROM articles a JOIN sources s ON s.id=a.source_id "
+                f"WHERE {' AND '.join(clauses)} "
+                "ORDER BY julianday(a.published_at) DESC, a.id DESC LIMIT ?",
+                (*args, max(0, int(limit))),
             ).fetchall()
         return [self._article_dict(row) for row in rows]
 
-    def _fts_articles(self, source_id: str, unread_only: bool, match: str, limit: int) -> list[dict[str, Any]]:
-        clauses = ["article_fts MATCH ?"]
-        args: list[Any] = [match]
-        if source_id:
-            clauses.append("a.source_id=?")
-            args.append(source_id)
-        if unread_only:
-            clauses.append("a.is_read=0")
-        with self.connect() as db:
-            rows = db.execute(
-                f"""
-                SELECT a.*,s.name source_name,s.avatar source_avatar
-                FROM article_fts f JOIN articles a ON a.id=f.rowid
-                JOIN sources s ON s.id=a.source_id
-                WHERE {' AND '.join(clauses)} ORDER BY a.published_at DESC LIMIT ?
-                """,
-                (*args, limit),
-            ).fetchall()
+    def articles(
+        self, source_id: str = "", unread_only: bool = False, query: str = "",
+        limit: int = 200, offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        rows = self._query_articles(source_id, unread_only, query, limit, offset)
         return [self._article_dict(row) for row in rows]
+
+    def article_count(self, source_id: str = "", unread_only: bool = False, query: str = "") -> int:
+        return int(self._query_articles(source_id, unread_only, query, count=True)[0][0])
+
+    def _query_articles(
+        self, source_id: str, unread_only: bool, query: str, limit: int = 200,
+        offset: int = 0, *, count: bool = False,
+    ) -> list[sqlite3.Row]:
+        tokens = query.split()
+        # The trigram tokenizer cannot match fewer than three characters.
+        use_fts = bool(tokens) and all(len(token) >= 3 for token in tokens)
+        while True:
+            clauses: list[str] = []
+            args: list[Any] = []
+            tables = "articles a JOIN sources s ON s.id=a.source_id"
+            if source_id:
+                clauses.append("a.source_id=?")
+                args.append(source_id)
+            if unread_only:
+                clauses.append("a.is_read=0")
+            if use_fts:
+                tables += " JOIN article_fts f ON f.rowid=a.id"
+                clauses.append("article_fts MATCH ?")
+                args.append(" AND ".join('"' + token.replace('"', '""') + '"' for token in tokens))
+            else:
+                for token in tokens:
+                    escaped = token.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                    clauses.append(
+                        "(" + " OR ".join(f"{column} LIKE ? ESCAPE '\\'" for column in
+                        ("a.title", "a.content", "a.summary", "s.name")) + ")"
+                    )
+                    args.extend([f"%{escaped}%"] * 4)
+            where = " WHERE " + " AND ".join(clauses) if clauses else ""
+            select = "COUNT(*)" if count else "a.*,s.name source_name,s.avatar source_avatar"
+            suffix = "" if count else " ORDER BY julianday(a.published_at) DESC, a.id DESC LIMIT ? OFFSET ?"
+            if not count:
+                args.extend((max(0, int(limit)), max(0, int(offset))))
+            try:
+                with self.connect() as db:
+                    return db.execute(f"SELECT {select} FROM {tables}{where}{suffix}", args).fetchall()
+            except sqlite3.OperationalError:
+                if not use_fts:
+                    raise
+                # SQLite builds without FTS5 still support the same search filters.
+                use_fts = False
 
     def article_by_url(self, url: str) -> dict[str, Any] | None:
         with self.connect() as db:
@@ -525,13 +573,15 @@ class Storage:
             pass
 
     def day_articles(self, day: date) -> list[dict[str, Any]]:
+        start, end = self._day_bounds(day)
         with self.connect() as db:
             rows = db.execute(
                 """
                 SELECT a.*,s.name source_name FROM articles a JOIN sources s ON s.id=a.source_id
-                WHERE substr(a.published_at,1,10)=? ORDER BY a.published_at DESC
+                WHERE julianday(a.published_at)>=julianday(?) AND julianday(a.published_at)<julianday(?)
+                ORDER BY julianday(a.published_at) DESC, a.id DESC
                 """,
-                (day.isoformat(),),
+                (start, end),
             ).fetchall()
         return [self._article_dict(row) for row in rows]
 
@@ -560,12 +610,34 @@ class Storage:
         return dict(row) if row else None
 
     def dashboard(self) -> dict[str, Any]:
-        today = date.today().isoformat()
+        today = self.today()
+        start, end = self._day_bounds(today)
         with self.connect() as db:
-            count = db.execute("SELECT COUNT(*) FROM articles WHERE substr(published_at,1,10)=?", (today,)).fetchone()[0]
+            count = db.execute(
+                "SELECT COUNT(*) FROM articles WHERE julianday(published_at)>=julianday(?) "
+                "AND julianday(published_at)<julianday(?)", (start, end),
+            ).fetchone()[0]
             unread = db.execute("SELECT COUNT(*) FROM articles WHERE is_read=0").fetchone()[0]
-            briefing = db.execute("SELECT * FROM briefings WHERE day=?", (today,)).fetchone()
+            briefing = db.execute("SELECT * FROM briefings WHERE day=?", (today.isoformat(),)).fetchone()
         return {"today_count": count, "unread_count": unread, "today_briefing": dict(briefing) if briefing else None}
+
+    def _reading_timezone(self):
+        try:
+            return ZoneInfo(str(self.settings().get("timezone") or "Asia/Shanghai"))
+        except (ZoneInfoNotFoundError, ValueError):
+            return datetime.now().astimezone().tzinfo or timezone.utc
+
+    def local_now(self) -> datetime:
+        return datetime.now(self._reading_timezone())
+
+    def today(self) -> date:
+        return self.local_now().date()
+
+    def _day_bounds(self, day: date) -> tuple[str, str]:
+        zone = self._reading_timezone()
+        start = datetime.combine(day, datetime.min.time(), tzinfo=zone)
+        end = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=zone)
+        return start.astimezone(timezone.utc).isoformat(), end.astimezone(timezone.utc).isoformat()
 
     def start_job(self, kind: str, source_id: str = "") -> int:
         with self.connect() as db:

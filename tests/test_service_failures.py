@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from gzhreader_core.credentials import CredentialVault
 from gzhreader_core.models import SourceProfile
 from gzhreader_core.providers import WeReadError
@@ -99,3 +101,30 @@ def test_verification_required_preserves_session_and_blocks_replay(tmp_path):
     assert storage.connection_state("weread")["state"] == "verification"
     assert any(event == "verification.required" for event, _payload in events)
     assert any(event == "sync.skipped" for event, _payload in events)
+
+
+def test_account_cooldown_stops_remaining_sources_and_rejects_forced_retries(tmp_path):
+    storage = Storage(tmp_path / "data.db")
+    storage.upsert_source(SourceProfile("MP_WXS_1", "公众号一"))
+    storage.upsert_source(SourceProfile("MP_WXS_2", "公众号二"))
+
+    class CooldownProvider:
+        calls = 0
+
+        def list_articles(self, *_args, **_kwargs):
+            self.calls += 1
+            raise WeReadError("rate_limit", "更新过于频繁", cooldown=True)
+
+        def mark_error(self, *_):
+            pass
+
+    provider = CooldownProvider()
+    service = ReaderService(storage, provider, Dummy(), Dummy(), Dummy())
+    assert service.sync(lambda *_: None, force=True)["errors"]
+    assert provider.calls == 1
+    assert service.sync(lambda *_: None, force=True)["accepted"] is False
+    assert service.start_sync(lambda *_: None, force=True)["accepted"] is False
+    assert provider.calls == 1
+    storage.set_connection_state("weread", "cooldown", "更新过于频繁", False, (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat())
+    service.sync(lambda *_: None, force=True)
+    assert provider.calls == 2

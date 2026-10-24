@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -145,11 +146,12 @@ class ArticleContentFetcher:
             logger.info("Content fetch: HTTP ok in %.2fs for %s", elapsed, url)
             return self._extract_from_html(
                 response.text,
-                url,
+                str(response.url),
                 content_source="http_fulltext",
                 fallback_title=fallback_title,
                 fallback_author=fallback_author,
                 fallback_publish_time=fallback_publish_time,
+                requested_url=url,
             )
         except Exception as exc:
             logger.warning("Content fetch: HTTP failed for %s: %s", url, exc)
@@ -228,6 +230,7 @@ class ArticleContentFetcher:
                                 pass
                             page.wait_for_timeout(1200)
                             html = page.content()
+                            final_url = page.url
                         finally:
                             context.close()
                     elapsed = time.perf_counter() - started
@@ -235,15 +238,16 @@ class ArticleContentFetcher:
                         "Content fetch: browser ok in %.2fs via %s for %s",
                         elapsed,
                         candidate.channel,
-                        url,
+                        final_url,
                     )
                     result = self._extract_from_html(
                         html,
-                        url,
+                        final_url,
                         content_source="browser_dom",
                         fallback_title=fallback_title,
                         fallback_author=fallback_author,
                         fallback_publish_time=fallback_publish_time,
+                        requested_url=url,
                     )
                     if result.success:
                         return result
@@ -275,14 +279,19 @@ class ArticleContentFetcher:
         fallback_title: str,
         fallback_author: str,
         fallback_publish_time: datetime | None,
+        requested_url: str = "",
     ) -> FetchedArticleContent:
-        if "mp.weixin.qq.com" in url:
-            extracted = self._extract_wechat_html(
-                html,
-                fallback_title=fallback_title,
-                fallback_author=fallback_author,
-                fallback_publish_time=fallback_publish_time,
-            )
+        final_host = urlparse(url).hostname
+        requested_host = urlparse(requested_url or url).hostname
+        if requested_host in {"mp.weixin.qq.com", "weixin.qq.com"} or final_host == "mp.weixin.qq.com":
+            extracted = None
+            if final_host == "mp.weixin.qq.com":
+                extracted = self._extract_wechat_html(
+                    html,
+                    fallback_title=fallback_title,
+                    fallback_author=fallback_author,
+                    fallback_publish_time=fallback_publish_time,
+                )
             if extracted is not None:
                 title, author, publish_time, content_text = extracted
                 return FetchedArticleContent(
@@ -294,6 +303,16 @@ class ArticleContentFetcher:
                     content_source=content_source,
                     capture_status=content_source,
                 )
+            return FetchedArticleContent(
+                title=fallback_title,
+                author=fallback_author,
+                publish_time=fallback_publish_time,
+                content_text="",
+                raw_html=html,
+                content_source="fetch_failed",
+                capture_status="fetch_failed",
+                fetch_error="WeChat article body is unavailable",
+            )
 
         generic = self._extract_generic_html(
             html,
@@ -333,7 +352,7 @@ class ArticleContentFetcher:
         fallback_publish_time: datetime | None,
     ) -> tuple[str, str, datetime | None, str] | None:
         soup = BeautifulSoup(html, "html.parser")
-        content_node = soup.select_one("#js_content")
+        content_node = soup.select_one("#js_content") or soup.select_one(".rich_media_content")
         if content_node is None:
             return None
 
@@ -361,7 +380,7 @@ class ArticleContentFetcher:
             )
         ) or fallback_publish_time
         content_text = self._clean_text(content_node.get_text("\n", strip=True))
-        if len(content_text) < MIN_FETCHED_CONTENT_CHARS:
+        if not content_text:
             return None
         return title, author, publish_time, self._truncate_content(content_text)
 

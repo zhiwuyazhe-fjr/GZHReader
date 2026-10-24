@@ -17,6 +17,7 @@
       ]
     },
     "shell:allow-stdin-write",
+    "shell:allow-kill",
     "notification:default",
     "autostart:default",
     "updater:default",

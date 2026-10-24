@@ -6,7 +6,7 @@ authors = ["GZHReader contributors"]
 license = "MIT"
 repository = "https://github.com/zhiwuyazhe-fjr/GZHReader"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.89.0"
 
 [lib]
 name = "gzhreader_desktop_lib"

@@ -8,8 +8,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Callable
-
-from playwright.sync_api import sync_playwright
+from urllib.parse import parse_qs, urlparse
 
 from ..credentials import CredentialVault
 from ..providers.weread import BASE_URL, build_mp_reader_url, is_risk_control_message
@@ -93,7 +92,7 @@ def classify_articles_payload(payload: object) -> tuple[str, int, str]:
     except (TypeError, ValueError):
         code = 0
     message = str(payload.get("errMsg") or payload.get("errmsg") or "")
-    if not code and "reviews" in payload:
+    if not code and isinstance(payload.get("reviews"), list):
         return "ready", 0, message
     if code == -2041:
         return ("cooldown" if is_risk_control_message(message) else "captcha"), code, message
@@ -116,6 +115,21 @@ class WeReadLoginCapture:
 
     def cancel(self) -> None:
         self._cancel.set()
+
+    def prepare(self) -> None:
+        """Reset cancellation in the caller before its worker thread is started."""
+        self._cancel.clear()
+
+    @staticmethod
+    def _is_articles_request(url: str, source_id: str) -> bool:
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        return (
+            parsed.hostname == "weread.qq.com"
+            and parsed.path == "/web/mp/articles"
+            and query.get("bookId") == [source_id]
+            and query.get("offset", ["0"]) == ["0"]
+        )
 
     @staticmethod
     def _has_login_cookie(context) -> bool:
@@ -149,11 +163,14 @@ class WeReadLoginCapture:
     def run(self, source_id: str, emit: Callable[[str, dict], None], timeout_seconds: int = 300) -> dict:
         if not self._running.acquire(blocking=False):
             return {"accepted": False, "message": "\u8fde\u63a5\u7a97\u53e3\u5df2\u7ecf\u6253\u5f00"}
-        self._cancel.clear()
         captured: dict[str, str | float | bool] = {}
         state = {"verified": False, "captcha_announced": False, "risk_limited": False, "last_error": "", "payload": None}
-        emit("auth.progress", {"stage": "opening", "message": "\u6b63\u5728\u6253\u5f00\u5fae\u4fe1\u8bfb\u4e66"})
         try:
+            if self._cancel.is_set():
+                raise RuntimeError("已取消连接")
+            from playwright.sync_api import sync_playwright
+
+            emit("auth.progress", {"stage": "opening", "message": "\u6b63\u5728\u6253\u5f00\u5fae\u4fe1\u8bfb\u4e66"})
             with sync_playwright() as playwright:
                 errors: list[str] = []
                 browser = None
@@ -212,7 +229,7 @@ class WeReadLoginCapture:
                     page = context.pages[0] if context.pages else context.new_page()
 
                     def capture_request(request) -> None:
-                        if "/web/mp/articles" not in request.url:
+                        if not self._is_articles_request(request.url, source_id):
                             return
                         try:
                             snapshot = self._credential_snapshot(context, request, source_id)
@@ -222,7 +239,7 @@ class WeReadLoginCapture:
                             logger.debug("Unable to capture WeRead request credentials", exc_info=True)
 
                     def capture_response(response) -> None:
-                        if "/web/mp/articles" not in response.url:
+                        if not self._is_articles_request(response.url, source_id):
                             return
                         try:
                             payload = response.json()
