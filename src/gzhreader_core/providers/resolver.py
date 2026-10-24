@@ -419,12 +419,18 @@ class ArticleLinkResolver:
 
     @staticmethod
     def _clean_js_string(value: str) -> str:
-        value = value.replace(r"\/", "/").replace(r"\x26", "&")
-        if "\\u" in value or "\\x" in value:
-            try:
-                value = bytes(value, "utf-8").decode("unicode_escape")
-            except UnicodeDecodeError:
-                pass
+        # Decode escapes without reinterpreting already decoded Chinese as UTF-8 bytes.
+        simple = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v"}
+
+        def decode(match: re.Match[str]) -> str:
+            escaped = match.group(1)
+            if escaped[0] in {"u", "x"}:
+                return chr(int(escaped[1:], 16))
+            return simple.get(escaped, escaped)
+
+        value = re.sub(r"\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\\/'\"nrtbfv])", decode, value)
+        # JavaScript encodes characters outside the BMP as UTF-16 surrogate pairs.
+        value = value.encode("utf-16", errors="surrogatepass").decode("utf-16", errors="replace")
         return html_module.unescape(value).strip()
 
     @staticmethod

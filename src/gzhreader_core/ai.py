@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -23,19 +24,27 @@ class Summarizer:
         return self.vault.load("ai")
 
     def save(self, payload: dict[str, Any]) -> None:
+        self.vault.save("ai", self._merge_config(payload))
+
+    def _merge_config(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("AI 设置格式无效")
         current = self.config()
-        api_key = payload.get("api_key")
-        if api_key is None:
-            api_key = current.get("api_key", "")
-        self.vault.save(
-            "ai",
-            {
-                "base_url": str(payload.get("base_url") or "").strip(),
-                "model": str(payload.get("model") or "").strip(),
-                "api_key": str(api_key or "").strip(),
-                "enabled": bool(payload.get("enabled", True)),
-            },
-        )
+        result = {}
+        for key in ("base_url", "model", "api_key"):
+            value = payload.get(key, current.get(key, ""))
+            if key == "api_key" and value is None:
+                value = current.get(key, "")
+            if not isinstance(value, str):
+                raise ValueError("AI 服务地址、密钥和模型名称必须为文本")
+            result[key] = value.strip()
+        enabled = payload.get("enabled", current.get("enabled", True))
+        if not isinstance(enabled, bool):
+            raise ValueError("AI 开关必须为布尔值")
+        result["enabled"] = enabled
+        if result["base_url"]:
+            self._endpoint(result["base_url"])
+        return result
 
     def public_config(self) -> dict[str, Any]:
         config = self.config()
@@ -48,10 +57,24 @@ class Summarizer:
 
     @staticmethod
     def _endpoint(base_url: str) -> str:
-        return base_url.rstrip("/") + "/chat/completions"
+        value = base_url.strip().rstrip("/")
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("请填写有效的 HTTP 或 HTTPS 服务地址")
+        return value if parsed.path.endswith("/chat/completions") else value + "/chat/completions"
 
     def test(self, payload: dict[str, Any]) -> dict[str, Any]:
-        config = {**self.config(), **payload}
+        try:
+            config = self._merge_config(payload)
+        except ValueError as exc:
+            return {"ok": False, "message": str(exc)}
         if not config.get("base_url") or not config.get("api_key") or not config.get("model"):
             return {"ok": False, "message": "请完整填写服务地址、密钥和模型名称"}
         body = {
@@ -76,6 +99,7 @@ class Summarizer:
                 return {"ok": False, "message": "服务地址无法访问"}
             if response.status_code >= 400:
                 return {"ok": False, "message": "服务地址无法访问"}
+            self._response_text(response)
             return {"ok": True, "message": "连接成功"}
         except httpx.TimeoutException:
             return {"ok": False, "message": "连接超时"}
@@ -124,22 +148,36 @@ class Summarizer:
                         json=body,
                     )
                 response.raise_for_status()
-                last_raw = str(response.json().get("choices", [{}])[0].get("message", {}).get("content", "")).strip()
+                last_raw = self._response_text(response)
                 data = self._parse(last_raw)
                 return {
-                    "summary": str(data.get("summary") or last_raw).strip(),
-                    "key_points": [str(item).strip() for item in list(data.get("key_points") or [])[:5] if str(item).strip()],
-                    "tags": [str(item).strip() for item in list(data.get("tags") or [])[:3] if str(item).strip()],
-                    "takeaway": str(data.get("takeaway") or "").strip(),
+                    **data,
                     "raw_text": last_raw,
                     "prompt_version": PROMPT_VERSION,
                     "status": "done",
                 }
+            except httpx.HTTPStatusError as exc:
+                if 400 <= exc.response.status_code < 500 and exc.response.status_code not in {408, 429}:
+                    break
             except Exception:
                 continue
         result = self.fallback(text)
         result["raw_text"] = last_raw
         return result
+
+    @staticmethod
+    def _response_text(response: httpx.Response) -> str:
+        value = response.json()
+        if not isinstance(value, dict):
+            raise ValueError("AI 响应格式无效")
+        choices = value.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise ValueError("AI 响应没有返回内容")
+        message = choices[0].get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("AI 响应没有返回内容")
+        return content.strip()
 
     @staticmethod
     def _parse(raw: str) -> dict[str, Any]:
@@ -148,4 +186,14 @@ class Summarizer:
         value = json.loads(match.group(0) if match else cleaned)
         if not isinstance(value, dict):
             raise ValueError("摘要格式无效")
-        return value
+        summary = value.get("summary")
+        takeaway = value.get("takeaway", "")
+        if not isinstance(summary, str) or not summary.strip() or not isinstance(takeaway, str):
+            raise ValueError("摘要格式无效")
+        result = {"summary": summary.strip(), "takeaway": takeaway.strip()}
+        for key, limit in (("key_points", 5), ("tags", 3)):
+            items = value.get(key, [])
+            if not isinstance(items, list) or any(not isinstance(item, str) for item in items):
+                raise ValueError("摘要格式无效")
+            result[key] = [item.strip() for item in items if item.strip()][:limit]
+        return result

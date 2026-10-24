@@ -73,7 +73,8 @@ class CredentialVault:
         if not path.exists():
             return {}
         try:
-            return json.loads(unprotect(base64.b64decode(path.read_bytes())).decode("utf-8"))
+            payload = json.loads(unprotect(base64.b64decode(path.read_bytes(), validate=True)).decode("utf-8"))
+            return payload if isinstance(payload, dict) else {}
         except Exception:
             return {}
 

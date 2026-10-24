@@ -1,0 +1,41 @@
+name: Project checks
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Validate versions
+        shell: pwsh
+        run: .\scripts\build_validate_versions.ps1
+      - name: Install core dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Test core
+        run: python -m pytest
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+      - name: Test desktop transport
+        working-directory: desktop
+        run: npm test
+      - name: Build desktop frontend
+        working-directory: desktop
+        run: npm run build

@@ -143,7 +143,7 @@ GZHReader Python 本地核心
 SQLite + 内容摘要 + 每日简报
 ```
 
-- 桌面端使用 Tauri 2、Vue 3、TypeScript、Vite 和 Pinia
+- 桌面端使用 Tauri 2、Vue 3、TypeScript 和 Vite
 - Python Core 由 PyInstaller 构建为内部 Sidecar
 - 桌面端与本地核心通过 stdin/stdout 通信
 - 不开放 localhost HTTP 端口
@@ -155,8 +155,8 @@ SQLite + 内容摘要 + 每日简报
 
 - Windows 10/11 x64
 - Python 3.11+
-- Node.js 20+
-- Rust stable
+- Node.js 22.19+
+- Rust stable（最低 1.89）
 - Visual Studio Build Tools 2022
 - MSVC C++ 工具链和 Windows 10/11 SDK
 
@@ -177,8 +177,13 @@ $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m pytest
 
 cd desktop
+npm test
 npm run build
 ```
+
+`npm test` 使用 Node.js 内置测试运行器，覆盖本地核心连接、异常恢复、关停与时区日界。Python 测试使用临时数据库和模拟响应，不会连接真实微信账户或调用付费摘要服务。
+
+日常检查也会在 push / pull request 时通过 GitHub Actions 执行。发布前会检查 Python、npm、Cargo 和 Tauri 版本一致，标签必须为 `v<version>`。
 
 ### 构建本地核心
 

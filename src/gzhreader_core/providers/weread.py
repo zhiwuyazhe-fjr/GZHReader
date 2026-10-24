@@ -78,6 +78,8 @@ def build_mp_reader_url(book_id: str) -> str:
 
 
 def raise_response_error(payload: dict) -> None:
+    if not isinstance(payload, dict):
+        raise WeReadError("invalid_response", "内容列表格式无效")
     code = payload.get("errCode", payload.get("errcode", 0))
     try:
         code = int(code or 0)
@@ -117,17 +119,26 @@ def parse_mp_articles(payload: dict, source: SourceProfile) -> tuple[list[Articl
     if not isinstance(payload, dict):
         raise WeReadError("invalid_response", "内容列表格式无效")
     raise_response_error(payload)
-    groups = payload.get("reviews", []) or []
+    groups = payload.get("reviews")
+    if not isinstance(groups, list):
+        raise WeReadError("invalid_response", "内容列表格式无效")
     articles: list[ArticleRecord] = []
-    for group in groups if isinstance(groups, list) else []:
+    for group in groups:
         if not isinstance(group, dict):
-            continue
+            raise WeReadError("invalid_response", "内容列表格式无效")
         group_time = group.get("createTime", 0)
-        for sub_review in group.get("subReviews", []) or []:
+        sub_reviews = group.get("subReviews", []) or []
+        if not isinstance(sub_reviews, list):
+            raise WeReadError("invalid_response", "内容列表格式无效")
+        for sub_review in sub_reviews:
             if not isinstance(sub_review, dict):
-                continue
+                raise WeReadError("invalid_response", "内容列表格式无效")
             review = sub_review.get("review") or {}
+            if not isinstance(review, dict):
+                raise WeReadError("invalid_response", "内容列表格式无效")
             mp_info = review.get("mpInfo") or {}
+            if not isinstance(mp_info, dict):
+                raise WeReadError("invalid_response", "内容列表格式无效")
             review_id = review.get("reviewId") or sub_review.get("reviewId")
             if not review_id:
                 continue
@@ -137,8 +148,9 @@ def parse_mp_articles(payload: dict, source: SourceProfile) -> tuple[list[Articl
             timestamp = mp_info.get("time") or review.get("createTime") or group_time or 0
             try:
                 published = datetime.fromtimestamp(int(timestamp), tz=timezone.utc)
-            except (TypeError, ValueError, OSError):
-                published = datetime.now(timezone.utc)
+            except (TypeError, ValueError, OSError, OverflowError) as exc:
+                # A fabricated current timestamp can advance the sync cursor past real articles.
+                raise WeReadError("invalid_response", "文章发布时间无效") from exc
             original_id = str(mp_info.get("originalId") or "")
             url = build_mp_url(original_id) or str(mp_info.get("url") or review.get("url") or "")
             if not url:
@@ -155,7 +167,7 @@ def parse_mp_articles(payload: dict, source: SourceProfile) -> tuple[list[Articl
                     digest=str(mp_info.get("content") or review.get("content") or ""),
                 )
             )
-    return articles, len(groups) if isinstance(groups, list) else 0
+    return articles, len(groups)
 
 
 def extract_mp_content(html: str) -> str:
@@ -306,9 +318,18 @@ class WeReadProvider:
             raise WeReadError("invalid_book_id", "公众号标识无效")
         result: list[ArticleRecord] = []
         newest_cursor = 0
-        reached_cursor = previous_cursor == 0
+        reached_cursor = False
         offset = 0
         pages_scanned = 0
+        seen: set[str] = set()
+        limit = max(1, int(limit))
+        browser_import_only = (
+            not previous_cursor
+            and (source.id, 0) in self._prefetched_pages
+            and bool(self.credentials().get("authorization_consumed"))
+        )
+        if cutoff is not None and cutoff.tzinfo is None:
+            cutoff = cutoff.replace(tzinfo=timezone.utc)
         for page in range(max(max_pages, 1)):
             if page:
                 self.sleep(1)
@@ -327,11 +348,21 @@ class WeReadProvider:
                 if cutoff and article.published_at < cutoff:
                     reached_cursor = True
                     continue
+                if article.origin_id in seen:
+                    continue
+                seen.add(article.origin_id)
                 result.append(article)
-                if len(result) >= limit:
-                    reached_cursor = True if previous_cursor == 0 else reached_cursor
+                # Initial imports are capped. Incremental catch-up must reach the old
+                # cursor before committing a newer one, even when it exceeds the soft limit.
+                if not previous_cursor and len(result) >= limit:
+                    reached_cursor = True
                     break
-            if len(result) >= limit or reached_cursor:
+            if browser_import_only:
+                # This page has already spent its browser authorization. Import it
+                # without replaying that authorization to fill an initial soft limit.
+                reached_cursor = True
+                break
+            if (not previous_cursor and len(result) >= limit) or reached_cursor:
                 break
             offset += group_count
         if previous_cursor and not reached_cursor:

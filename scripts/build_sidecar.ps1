@@ -8,6 +8,10 @@ if (-not (Test-Path -LiteralPath $Python)) {
     $Python = $PythonCommand.Source
 }
 
+# The bundled sidecar is named for the Windows x64 target below.
+& $Python -c "import sysconfig; raise SystemExit(0 if sysconfig.get_platform() == 'win-amd64' else 1)"
+if ($LASTEXITCODE -ne 0) { throw "Sidecar 构建需要 Windows x64 Python。" }
+
 $Dist = Join-Path $RepoRoot "build\sidecar-dist"
 $Work = Join-Path $RepoRoot "build\sidecar-work"
 $Spec = Join-Path $RepoRoot "build\sidecar-spec"
@@ -23,6 +27,7 @@ New-Item -ItemType Directory -Force -Path $Dist, $Work, $Spec, $BinaryDir | Out-
     --paths (Join-Path $RepoRoot "src") `
     --collect-all readability `
     --collect-all chardet `
+    --collect-all tzdata `
     --hidden-import playwright.sync_api `
     --distpath $Dist `
     --workpath $Work `
